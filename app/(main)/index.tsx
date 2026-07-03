@@ -97,7 +97,7 @@ export default function DashboardScreen() {
 
   useSpeechRecognitionEvent("result", (event) => {
     if (Platform.OS === "web") return;
-    const text = event.results?.[0]?.[0]?.transcript ?? "";
+    const text = event.results?.[0]?.transcript ?? "";
     if (text) {
       micStateRef.current = "processing";
       finishWithResult(text);
