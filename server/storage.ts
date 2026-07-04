@@ -218,7 +218,7 @@ export class MemStorage implements IStorage {
 
   async createSession(userId: string): Promise<Session> {
     const token = randomUUID();
-    const session: Session = { token, userId, createdAt: new Date().toISOString() };
+    const session: Session = { token, userId, createdAt: new Date() };
     this.sessions.set(token, session);
     return session;
   }
@@ -428,8 +428,8 @@ export class DatabaseStorage implements IStorage {
 
   async createSession(userId: string): Promise<Session> {
     const token = randomUUID();
-    await this.db.insert(schema.sessions).values({ token, userId, createdAt: new Date().toISOString() });
-    return { token, userId, createdAt: new Date().toISOString() };
+    await this.db.insert(schema.sessions).values({ token, userId, createdAt: new Date() });
+    return { token, userId, createdAt: new Date() };
   }
 
   async getSession(token: string): Promise<Session | undefined> {
@@ -643,7 +643,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async acquireCronLock(jobName: string): Promise<boolean> {
-    const now = new Date().toISOString();
+    const now = new Date();
     try {
       // Try to insert or update the lock only if it's been more than 5 minutes since the last run
       // Actually we just need a simple lock. If we use a naive upsert, it will always succeed.
@@ -680,7 +680,7 @@ export class DatabaseStorage implements IStorage {
   async createInvitationCode(data: Omit<schema.InvitationCode, "id" | "createdAt" | "currentUses">): Promise<schema.InvitationCode> {
     const id = randomUUID();
 // @ts-expect-error
-    await this.db.insert(schema.invitationCodes).values({ ...data, id, currentUses: 0, createdAt: new Date().toISOString() });
+    await this.db.insert(schema.invitationCodes).values({ ...data, id, currentUses: 0, createdAt: new Date() });
     const rows = await this.db.select().from(schema.invitationCodes).where(eq(schema.invitationCodes.id, id));
     return rows[0];
   }

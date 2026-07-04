@@ -96,7 +96,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const registerMember = useCallback(async (data: { name: string; phone: string; password: string; village: string; joinDate?: string; exitDate?: string; invitationCode: string }) => {
+  const registerMember = useCallback(async (data: { name: string; phone: string; password: string; village: string; joinDate?: string; exitDate?: string; uniqueGroupCode: string }) => {
     try {
       const res = await apiPost<{ token: string; user: User; group: Group }>(
         "/api/auth/register/member",

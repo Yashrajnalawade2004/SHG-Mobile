@@ -159,7 +159,7 @@ export default function ShgSettingsScreen() {
         </View>
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>{t("superAdmin.taluka")}</Text>
+          <Text style={styles.sectionTitle}>{t("taluka")}</Text>
           <View style={styles.inputContainer}>
             <Ionicons name="map-outline" size={20} color={Colors.light.secondary} style={styles.inputIcon} />
             <TextInput style={styles.input} value={taluka} onChangeText={setTaluka} placeholderTextColor={Colors.light.textMuted} />
@@ -167,7 +167,7 @@ export default function ShgSettingsScreen() {
         </View>
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>{t("superAdmin.district")}</Text>
+          <Text style={styles.sectionTitle}>{t("district")}</Text>
           <View style={styles.inputContainer}>
             <Ionicons name="map" size={20} color={Colors.light.secondary} style={styles.inputIcon} />
             <TextInput style={styles.input} value={district} onChangeText={setDistrict} placeholderTextColor={Colors.light.textMuted} />

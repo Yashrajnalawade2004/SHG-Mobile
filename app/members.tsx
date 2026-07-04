@@ -1,6 +1,6 @@
 // @ts-nocheck
 import { useState } from "react";
-import { View, Text, StyleSheet, FlatList, Pressable, Platform, Alert, Modal } from "react-native";
+import { View, Text, StyleSheet, FlatList, Pressable, Platform, Alert, Modal, ActivityIndicator } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
@@ -9,6 +9,7 @@ import { useAuth, User } from "@/contexts/AuthContext";
 import { useData } from "@/contexts/DataContext";
 import Colors from "@/constants/colors";
 import { apiGet, apiPost } from "@/lib/api";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 function RoleBadge({ role }: { role: "president" | "treasurer" | "member" }) {
   const { t } = useLanguage();
@@ -127,8 +128,6 @@ export default function MembersScreen() {
   const [selectedMember, setSelectedMember] = useState<User | null>(null);
   
   const [showInviteModal, setShowInviteModal] = useState(false);
-  const [invitationCode, setInvitationCode] = useState<string | null>(null);
-  const [generatingInvite, setGeneratingInvite] = useState(false);
 
   const handleToggleStatus = (memberId: string, newStatus: "active" | "left") => {
     const msg = newStatus === "left"
@@ -155,19 +154,6 @@ export default function MembersScreen() {
     setShowModal(false);
   };
 
-  const handleGenerateInvite = async () => {
-    if (!group) return;
-    setGeneratingInvite(true);
-    try {
-      const res = await apiPost<{ code: string }>(`/api/groups/${group.groupId}/invitations`, { maxUses: 1 });
-      setInvitationCode(res.code);
-    } catch (e: any) {
-      Alert.alert(t("error"), e.message || "Failed to generate invite");
-    } finally {
-      setGeneratingInvite(false);
-    }
-  };
-
   const activeMembers = groupMembers.filter((m) => m.status === "active");
   const leftMembers = groupMembers.filter((m) => m.status === "left");
   const currentTreasurer = groupMembers.find((m) => m.id === group?.treasurerId);
@@ -186,7 +172,7 @@ export default function MembersScreen() {
         <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
           <Text style={styles.countText}>{activeMembers.length} {t("active")}</Text>
           {isPresident && (
-            <Pressable style={styles.inviteBtn} onPress={() => { setInvitationCode(null); setShowInviteModal(true); }}>
+            <Pressable style={styles.inviteBtn} onPress={() => setShowInviteModal(true)}>
               <Ionicons name="person-add" size={16} color="#fff" />
               <Text style={styles.inviteBtnText}>{t("members.invite")}</Text>
             </Pressable>
@@ -272,50 +258,15 @@ export default function MembersScreen() {
               {t("members.invite_member")}
             </Text>
             
-            {invitationCode ? (
-              <>
-                <Text style={styles.modalSubtitle}>
-                  {t("members.share_code")}
-                </Text>
-                <View style={styles.codeBox}>
-                  <Text style={styles.codeText} selectable>{invitationCode}</Text>
-                </View>
-                <Text style={{ fontSize: 12, color: Colors.light.textMuted, textAlign: "center", marginTop: 10 }}>
-                  {t("members.code_valid_1")}
-                </Text>
-              </>
-            ) : (
-              <>
-                <Text style={styles.modalSubtitle}>
-                  {t("auto.generate_a_unique_invitation_code")}
-                </Text>
-                <View style={styles.modalActions}>
-                  <Pressable style={styles.modalCancelBtn} onPress={() => setShowInviteModal(false)}>
-                    <Text style={styles.modalCancelText}>{t("cancel")}</Text>
-                  </Pressable>
-                  <Pressable
-                    style={[styles.modalConfirmBtn, { backgroundColor: Colors.light.primary }]}
-                    onPress={handleGenerateInvite}
-                    disabled={generatingInvite}
-                  >
-                    {generatingInvite ? (
-                      <ActivityIndicator color="#fff" size="small" />
-                    ) : (
-                      <>
-                        <Ionicons name="flash" size={18} color="#fff" />
-                        <Text style={styles.modalConfirmText}>{t("members.generate")}</Text>
-                      </>
-                    )}
-                  </Pressable>
-                </View>
-              </>
-            )}
-            
-            {invitationCode && (
-              <Pressable style={[styles.modalConfirmBtn, { backgroundColor: Colors.light.primary, marginTop: 20, width: "100%" }]} onPress={() => setShowInviteModal(false)}>
-                <Text style={styles.modalConfirmText}>{t("common.done")}</Text>
-              </Pressable>
-            )}
+            <Text style={styles.modalSubtitle}>
+              {t("members.share_code")}
+            </Text>
+            <View style={styles.codeBox}>
+              <Text style={styles.codeText} selectable>{group?.uniqueGroupCode}</Text>
+            </View>
+            <Pressable style={[styles.modalConfirmBtn, { backgroundColor: Colors.light.primary, marginTop: 20, width: "100%" }]} onPress={() => setShowInviteModal(false)}>
+              <Text style={styles.modalConfirmText}>{t("common.done")}</Text>
+            </Pressable>
           </Pressable>
         </Pressable>
       </Modal>

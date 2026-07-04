@@ -168,6 +168,14 @@ export const translations: Record<string, any> = {
       "en": "Village",
       "mr": "गाव"
     },
+    "taluka": {
+      "en": "Taluka",
+      "mr": "तालुका"
+    },
+    "district": {
+      "en": "District",
+      "mr": "जिल्हा"
+    },
     "joindate": {
       "en": "Join Date",
       "mr": "सामील तारीख"
@@ -1462,20 +1470,54 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  // Pre-calculate flattened translations once
+  const flattenedTranslations = useMemo(() => {
+    const flat: Record<string, any> = {};
+    const traverse = (obj: any) => {
+      for (const k in obj) {
+        if (obj[k] && typeof obj[k] === 'object') {
+          if ('en' in obj[k] && 'mr' in obj[k]) {
+            flat[k.toLowerCase()] = obj[k];
+          } else {
+            traverse(obj[k]);
+          }
+        }
+      }
+    };
+    traverse(translations);
+    return flat;
+  }, []);
+
   const t = useCallback(
     (key: string): string => {
+      // First try exact path
       const keys = key.split('.');
       let result: any = translations;
+      let found = true;
       for (const k of keys) {
         if (result && result[k]) {
           result = result[k];
         } else {
-          return key; // Fallback to key if not found
+          found = false;
+          break;
         }
       }
-      return result[language] || key;
+      
+      if (found && result && typeof result === 'object' && result[language]) {
+        return result[language];
+      }
+
+      // If exact path not found, try the flattened map (case-insensitive)
+      const lastKey = keys[keys.length - 1].toLowerCase();
+      const fullKey = key.toLowerCase();
+      const flatResult = flattenedTranslations[lastKey] || flattenedTranslations[fullKey];
+      if (flatResult && flatResult[language]) {
+        return flatResult[language];
+      }
+
+      return key; // Fallback to key if not found
     },
-    [language],
+    [language, flattenedTranslations],
   );
 
   const value = useMemo(

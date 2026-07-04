@@ -28,7 +28,6 @@ export default function RegisterScreen() {
   const [district, setDistrict] = useState("");
 
   const [uniqueGroupCode, setUniqueGroupCode] = useState("");
-  const [invitationCode, setInvitationCode] = useState("");
   const [exitDate, setExitDate] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -71,7 +70,7 @@ export default function RegisterScreen() {
     if (role === "president") {
       result = await registerPresident({ ...baseData, uniqueGroupCode: uniqueGroupCode.trim() });
     } else {
-      result = await registerMember({ ...baseData, invitationCode: invitationCode.trim() });
+      result = await registerMember({ ...baseData, uniqueGroupCode: uniqueGroupCode.trim() });
     }
 
     setLoading(false);
@@ -150,16 +149,12 @@ export default function RegisterScreen() {
           <InputField icon="location-outline" placeholder={t("village")} value={village} onChangeText={setVillage} />
           {role === "president" && (
             <>
-              <InputField icon="map-outline" placeholder={t("superAdmin.taluka")} value={taluka} onChangeText={setTaluka} />
-              <InputField icon="map" placeholder={t("superAdmin.district")} value={district} onChangeText={setDistrict} />
+              <InputField icon="map-outline" placeholder={t("taluka")} value={taluka} onChangeText={setTaluka} />
+              <InputField icon="map" placeholder={t("district")} value={district} onChangeText={setDistrict} />
             </>
           )}
 
-          {role === "president" ? (
-            <InputField icon="key-outline" placeholder={t("auto.group_code_e_g_shg")} value={uniqueGroupCode} onChangeText={setUniqueGroupCode} autoCapitalize="characters" />
-          ) : (
-            <InputField icon="ticket-outline" placeholder={t("auto.invitation_code")} value={invitationCode} onChangeText={setInvitationCode} autoCapitalize="characters" />
-          )}
+          <InputField icon="key-outline" placeholder={t("auto.group_code_e_g_shg")} value={uniqueGroupCode} onChangeText={setUniqueGroupCode} autoCapitalize="characters" />
 
           <InputField
             icon="calendar-outline"

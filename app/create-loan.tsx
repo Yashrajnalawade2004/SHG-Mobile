@@ -204,6 +204,82 @@ export default function CreateLoanScreen() {
             </View>
           )}
 
+          {Number(amount) > 0 && Number(duration) > 0 && (
+            <View style={{ marginTop: 16, marginBottom: 16, padding: 16, backgroundColor: Colors.light.card, borderRadius: 12, borderWidth: 1, borderColor: Colors.light.border, shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 2, elevation: 1 }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 12 }}>
+                <Ionicons name="calculator" size={18} color={Colors.light.primary} />
+                <Text style={{ fontFamily: "Poppins_600SemiBold", fontSize: 15, color: Colors.light.text }}>
+                  {t("auto.repayment_summary")}
+                </Text>
+              </View>
+              
+              <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
+                <Text style={{ fontFamily: "Poppins_400Regular", fontSize: 14, color: Colors.light.textSecondary }}>
+                  {t("loanAmount")}
+                </Text>
+                <Text style={{ fontFamily: "Poppins_500Medium", fontSize: 14, color: Colors.light.text }}>
+                  Rs. {Number(amount).toLocaleString('en-IN')}
+                </Text>
+              </View>
+              
+              <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 12, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: Colors.light.border }}>
+                <Text style={{ fontFamily: "Poppins_400Regular", fontSize: 14, color: Colors.light.textSecondary }}>
+                  {t("interest")} ({groupSettings?.interestRate || 2}% {t("auto.per_month")})
+                </Text>
+                <Text style={{ fontFamily: "Poppins_500Medium", fontSize: 14, color: Colors.light.text }}>
+                  + Rs. {Math.round(Number(amount) * (groupSettings?.interestRate || 2) / 100 * Number(duration)).toLocaleString('en-IN')}
+                </Text>
+              </View>
+              
+              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                <Text style={{ fontFamily: "Poppins_600SemiBold", fontSize: 15, color: Colors.light.text }}>
+                  {t("auto.total_amount_to_return")}
+                </Text>
+                <Text style={{ fontFamily: "Poppins_700Bold", fontSize: 18, color: Colors.light.primary }}>
+                  Rs. {(Number(amount) + Math.round(Number(amount) * (groupSettings?.interestRate || 2) / 100 * Number(duration))).toLocaleString('en-IN')}
+                </Text>
+              </View>
+            </View>
+          )}
+
+          {Number(amount) > 0 && Number(duration) > 0 && (
+            <View style={{ marginTop: 16, marginBottom: 16, padding: 16, backgroundColor: Colors.light.card, borderRadius: 12, borderWidth: 1, borderColor: Colors.light.border, shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 2, elevation: 1 }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 12 }}>
+                <Ionicons name="calculator" size={18} color={Colors.light.primary} />
+                <Text style={{ fontFamily: "Poppins_600SemiBold", fontSize: 15, color: Colors.light.text }}>
+                  {t("auto.repayment_summary")}
+                </Text>
+              </View>
+              
+              <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
+                <Text style={{ fontFamily: "Poppins_400Regular", fontSize: 14, color: Colors.light.textSecondary }}>
+                  {t("loanAmount")}
+                </Text>
+                <Text style={{ fontFamily: "Poppins_500Medium", fontSize: 14, color: Colors.light.text }}>
+                  Rs. {Number(amount).toLocaleString('en-IN')}
+                </Text>
+              </View>
+              
+              <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 12, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: Colors.light.border }}>
+                <Text style={{ fontFamily: "Poppins_400Regular", fontSize: 14, color: Colors.light.textSecondary }}>
+                  {t("interest")} ({groupSettings?.interestRate || 2}% {t("auto.per_month")})
+                </Text>
+                <Text style={{ fontFamily: "Poppins_500Medium", fontSize: 14, color: Colors.light.text }}>
+                  + Rs. {Math.round(Number(amount) * (groupSettings?.interestRate || 2) / 100 * Number(duration)).toLocaleString('en-IN')}
+                </Text>
+              </View>
+              
+              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                <Text style={{ fontFamily: "Poppins_600SemiBold", fontSize: 15, color: Colors.light.text }}>
+                  {t("auto.total_amount_to_return")}
+                </Text>
+                <Text style={{ fontFamily: "Poppins_700Bold", fontSize: 18, color: Colors.light.primary }}>
+                  Rs. {(Number(amount) + Math.round(Number(amount) * (groupSettings?.interestRate || 2) / 100 * Number(duration))).toLocaleString('en-IN')}
+                </Text>
+              </View>
+            </View>
+          )}
+
           <View style={styles.securityNote}>
             <Ionicons name="lock-closed" size={16} color={Colors.light.secondary} />
             <Text style={styles.securityText}>

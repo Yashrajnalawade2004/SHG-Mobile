@@ -69,11 +69,11 @@ function generateHeaderHTML(title: string, group: Group, members: User[], t: any
           <div class="header-value">${group.village || "-"}</div>
         </div>
         <div class="header-item">
-          <div class="header-label">${t("superAdmin.taluka")}</div>
+          <div class="header-label">${t("taluka")}</div>
           <div class="header-value">${group.taluka || "-"}</div>
         </div>
         <div class="header-item">
-          <div class="header-label">${t("superAdmin.district")}</div>
+          <div class="header-label">${t("district")}</div>
           <div class="header-value">${group.district || "-"}</div>
         </div>
         <div class="header-item">
@@ -188,7 +188,13 @@ export async function generateGroupLoansReport({ group, president, loans, loanRe
   let rows = "";
   filteredLoans.forEach((loan: any) => {
     const member = groupMembers.find((m: any) => m.id === loan.memberId);
-    const repaid = loan.amount - loan.remainingBalance;
+    
+    // Calculate total repayable to find out how much was actually repaid
+    const totalInterest = Math.round(loan.amount * (loan.interest / 100) * loan.duration);
+    const totalRepayable = loan.amount + totalInterest;
+    // For older loans not backfilled, prevent negative repaid amount
+    const repaid = Math.max(0, (loan.remainingBalance > loan.amount ? totalRepayable : loan.amount) - loan.remainingBalance);
+    
     rows += `<tr>
       <td>${member?.name || "-"}</td>
       <td>${formatDate(loan.createdAt)}</td>

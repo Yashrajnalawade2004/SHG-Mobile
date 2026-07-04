@@ -122,18 +122,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/auth/register/member", async (req, res) => {
     try {
-      const { name, phone, password, village, joinDate, exitDate, invitationCode } = req.body;
-      if (!name || !phone || !password || !village || !invitationCode) {
+      const { name, phone, password, village, joinDate, exitDate, uniqueGroupCode } = req.body;
+      if (!name || !phone || !password || !village || !uniqueGroupCode) {
         return res.status(400).json({ error: "Missing required fields" });
       }
 
-      const codeObj = await storage.getInvitationCode(invitationCode);
-      if (!codeObj || !codeObj.active || (codeObj.expiresAt && new Date() > codeObj.expiresAt) || codeObj.currentUses >= codeObj.maxUses) {
-        return res.status(400).json({ error: "invalidOrExpiredCode" });
+      const group = await storage.getGroupByUniqueGroupCode(uniqueGroupCode);
+      if (!group) {
+        return res.status(404).json({ error: "invalidOrExpiredCode" });
       }
-
-      const group = await storage.getGroupByGroupId(codeObj.groupId);
-      if (!group || group.status === "pending") {
+      if (group.status === "pending") {
         return res.status(404).json({ error: "groupNotFound" });
       }
       const existingPhone = await storage.getUserByPhone(phone);
@@ -149,12 +147,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         joinDate: joinDate ? new Date(joinDate) : new Date(),
         exitDate: exitDate ? new Date(exitDate) : undefined,
         role: "member",
-        groupId: codeObj.groupId,
+        groupId: group.groupId,
         status: "active",
         preferredLanguage: group.preferredLanguage,
       });
-
-      await storage.incrementInvitationCodeUsage(codeObj.id, user.id);
 
       const session = await storage.createSession(user.id);
       const { password: _p, ...safeUser } = user;
@@ -390,13 +386,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "scheduledDate required" });
       const meeting = await storage.createMeeting({
         groupId,
-        scheduledDate,
+        scheduledDate: new Date(scheduledDate),
         agenda: agenda || "",
         notes: notes || "",
-        attendance: [],
         status: "scheduled",
         createdBy: req.currentUser!.id,
-        createdAt: new Date().toISOString(),
+        createdAt: new Date(),
       });
       return res.status(201).json(meeting);
     },
@@ -479,7 +474,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         memberId: user.id,
         memberName: user.name,
         amount: Number(amount),
-        date: new Date().toISOString(),
+        expectedAmount: 0,
+        lateFee: 0,
+        month: "",
+        date: new Date(),
         mode: paymentMode,
         status: paymentMode === "online" ? "pending_verification" : "pending",
       });
@@ -526,7 +524,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const updateData: any = {
         status,
         verifiedBy: user.id,
-        verifiedAt: new Date().toISOString(),
+        verifiedAt: new Date(),
       };
       
       // If verifying, ensure amount is set correctly (expected + late fee)
@@ -643,17 +641,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
         ? "pending_treasurer"
         : "pending_president";
 
+      const principal = Number(amount);
+      const rate = settings.interestRate;
+      const dur = Number(duration);
+      const totalInterest = Math.round(principal * (rate / 100) * dur);
+      const totalRepayable = principal + totalInterest;
+
       const loan = await storage.createLoan({
         groupId,
         memberId: user.id,
         memberName: user.name,
         resolutionNo: "",
-        amount: Number(amount),
-        interest: settings.interestRate,
-        duration: Number(duration),
-        remainingBalance: Number(amount),
+        amount: principal,
+        interest: rate,
+        duration: dur,
+        remainingBalance: totalRepayable,
         status: initialStatus,
-        createdAt: new Date().toISOString(),
+        createdAt: new Date(),
       });
       return res.status(201).json(loan);
     },
@@ -677,7 +681,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const updated = await storage.updateLoan(loanId, {
         status: "pending_president",
         treasurerActionBy: user.id,
-        treasurerActionAt: new Date().toISOString(),
+        treasurerActionAt: new Date(),
       });
       return res.json(updated);
     },
@@ -701,7 +705,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const updated = await storage.updateLoan(loanId, {
         status: "treasurer_rejected",
         treasurerActionBy: user.id,
-        treasurerActionAt: new Date().toISOString(),
+        treasurerActionAt: new Date(),
       });
       return res.json(updated);
     },
@@ -728,7 +732,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         resolutionNo: resolutionNo || "",
         meetingId,
         approvedBy: req.currentUser!.id,
-        approvedAt: new Date().toISOString(),
+        approvedAt: new Date(),
       });
       return res.json(updated);
     },
@@ -752,7 +756,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const updated = await storage.updateLoan(loanId, {
         status: "rejected",
         approvedBy: req.currentUser!.id,
-        approvedAt: new Date().toISOString(),
+        approvedAt: new Date(),
       });
       return res.json(updated);
     },
@@ -803,7 +807,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const repayment = await storage.createRepayment({
         loanId,
         amount: Number(amount),
-        date: new Date().toISOString(),
+        date: new Date(),
         recordedBy: req.currentUser!.id,
       });
       const allRepayments = await storage.getRepaymentsByLoanId(loanId);

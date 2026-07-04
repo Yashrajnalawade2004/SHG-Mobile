@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { View, Text, StyleSheet, Modal, Pressable } from "react-native";
+import { View, Text, StyleSheet, Modal, Pressable, Platform } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import Colors from "@/constants/colors";
 

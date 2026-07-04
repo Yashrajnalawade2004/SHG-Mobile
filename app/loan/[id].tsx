@@ -61,7 +61,11 @@ export default function LoanDetailScreen() {
 
   const totalRepaid = repayments.reduce((sum, r) => sum + r.amount, 0);
   const color = loanStatusColor(loan.status);
-  const progress = loan.amount > 0 ? ((loan.amount - loan.remainingBalance) / loan.amount) * 100 : 0;
+  
+  const totalInterest = Math.round(loan.amount * (loan.interest / 100) * loan.duration);
+  const totalRepayable = loan.amount + totalInterest;
+  const rawProgress = totalRepayable > 0 ? (totalRepaid / totalRepayable) * 100 : 0;
+  const progress = Math.min(100, Math.max(0, rawProgress));
 
   const handleTreasurerApprove = async () => {
     setDialog(null);
