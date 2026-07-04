@@ -176,13 +176,17 @@ function setupErrorHandler(app: express.Application) {
   server.listen(
     {
       port,
-      host: "0.0.0.0",
-      reusePort: true,
+      host: "127.0.0.1",
     },
     () => {
       log(`Server running on port ${port}`);
       log(`API: http://localhost:${port}/api`);
       log(`App: http://localhost:${port}`);
+      
+      // Start cron jobs
+      import("./cron").then((cron) => {
+        cron.startCronJobs();
+      });
     },
   );
 })();

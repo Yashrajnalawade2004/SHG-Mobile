@@ -29,9 +29,9 @@ interface AuthContextValue {
   user: User | null;
   group: Group | null;
   isLoading: boolean;
-  login: (phone: string, password: string) => Promise<{ success: boolean; error?: string }>;
-  registerPresident: (data: { name: string; phone: string; password: string; village: string; joinDate?: string; exitDate?: string; groupId: string; groupName: string }) => Promise<{ success: boolean; error?: string }>;
-  registerMember: (data: { name: string; phone: string; password: string; village: string; joinDate?: string; exitDate?: string; groupId: string }) => Promise<{ success: boolean; error?: string }>;
+  login: (phone: string, password: string) => Promise<{ success: boolean; error?: string; role?: string }>;
+  registerPresident: (data: { name: string; phone: string; password: string; village: string; joinDate?: string; exitDate?: string; uniqueGroupCode: string }) => Promise<{ success: boolean; error?: string }>;
+  registerMember: (data: { name: string; phone: string; password: string; village: string; joinDate?: string; exitDate?: string; invitationCode: string }) => Promise<{ success: boolean; error?: string }>;
   logout: () => Promise<void>;
   verifyPassword: (password: string) => Promise<boolean>;
   isPresident: boolean;
@@ -74,13 +74,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       await saveToken(data.token);
       setUser(data.user);
       setGroup(data.group);
-      return { success: true };
+      return { success: true, role: data.user.role };
     } catch (e: any) {
       return { success: false, error: e.message || "error" };
     }
   }, []);
 
-  const registerPresident = useCallback(async (data: { name: string; phone: string; password: string; village: string; joinDate?: string; exitDate?: string; groupId: string; groupName: string }) => {
+  const registerPresident = useCallback(async (data: { name: string; phone: string; password: string; village: string; joinDate?: string; exitDate?: string; uniqueGroupCode: string }) => {
     try {
       const res = await apiPost<{ token: string; user: User; group: Group }>(
         "/api/auth/register/president",
@@ -96,7 +96,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const registerMember = useCallback(async (data: { name: string; phone: string; password: string; village: string; joinDate?: string; exitDate?: string; groupId: string }) => {
+  const registerMember = useCallback(async (data: { name: string; phone: string; password: string; village: string; joinDate?: string; exitDate?: string; invitationCode: string }) => {
     try {
       const res = await apiPost<{ token: string; user: User; group: Group }>(
         "/api/auth/register/member",

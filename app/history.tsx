@@ -87,7 +87,7 @@ export default function HistoryScreen() {
           <Text style={styles.historyTitle}>{item.memberName}</Text>
           <Text style={styles.historyDate}>{formatDate(item.date)}</Text>
           {item.status === "confirmed" && (
-            <Text style={styles.historyMeta}>{language === "en" ? "Verified by" : "सत्यापित"}: {verifier}</Text>
+            <Text style={styles.historyMeta}>{t("auto.verified_by")}: {verifier}</Text>
           )}
         </View>
         <View style={{ alignItems: "flex-end" }}>
@@ -123,7 +123,7 @@ export default function HistoryScreen() {
             <Text style={styles.historyMeta}>{t("resolutionNo")} {item.resolutionNo}</Text>
           ) : null}
           <Text style={styles.historyMeta}>
-            {repaymentCount} {language === "en" ? "repayments" : "परतफेड"}
+            {repaymentCount} {t("auto.repayments")}
           </Text>
         </View>
         <View style={{ alignItems: "flex-end" }}>
@@ -155,10 +155,10 @@ export default function HistoryScreen() {
           <Ionicons name="calendar" size={18} color={statusColor} />
         </View>
         <View style={{ flex: 1 }}>
-          <Text style={styles.historyTitle} numberOfLines={1}>{item.agenda || (language === "en" ? "Meeting" : "बैठक")}</Text>
+          <Text style={styles.historyTitle} numberOfLines={1}>{item.agenda || (t("auto.meeting"))}</Text>
           <Text style={styles.historyDate}>{formatDate(item.scheduledDate)}</Text>
           <Text style={styles.historyMeta}>
-            {item.attendance.length} {language === "en" ? "attended" : "उपस्थित"}
+            {item.attendance.length} {t("auto.attended")}
           </Text>
         </View>
         <View style={{ alignItems: "flex-end" }}>
@@ -169,7 +169,7 @@ export default function HistoryScreen() {
           </View>
           {attended !== null && item.status === "completed" && (
             <Text style={[styles.attendanceStatus, { color: attended ? Colors.light.success : Colors.light.danger }]}>
-              {attended ? (language === "en" ? "Present" : "उपस्थित") : (language === "en" ? "Absent" : "अनुपस्थित")}
+              {attended ? (t("auto.present")) : (t("auto.absent"))}
             </Text>
           )}
         </View>
@@ -193,7 +193,7 @@ export default function HistoryScreen() {
         <Pressable onPress={() => router.back()}>
           <Ionicons name="arrow-back" size={24} color={Colors.light.text} />
         </Pressable>
-        <Text style={styles.headerTitle}>{language === "en" ? "History" : "इतिहास"}</Text>
+        <Text style={styles.headerTitle}>{t("auto.history")}</Text>
         <View style={{ width: 24 }} />
       </View>
 
@@ -204,7 +204,7 @@ export default function HistoryScreen() {
             onPress={() => { Haptics.selectionAsync(); setSelectedMemberId(null); }}
           >
             <Text style={[styles.memberChipText, !selectedMemberId && styles.memberChipTextActive]}>
-              {language === "en" ? "All" : "सर्व"}
+              {t("auto.all")}
             </Text>
           </Pressable>
           {groupMembers.map((m) => (

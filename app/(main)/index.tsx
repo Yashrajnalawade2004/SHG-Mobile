@@ -29,7 +29,7 @@ export default function DashboardScreen() {
   const insets = useSafeAreaInsets();
   const { user, group, isPresident } = useAuth();
   const { t, language } = useLanguage();
-  const { meetings, payments, loans, groupMembers, refreshData } = useData();
+  const { meetings, payments, loans, groupMembers, refreshData, groupSummary } = useData();
   const [refreshing, setRefreshing] = useState(false);
 
   const [micState, setMicState] = useState<MicState>("idle");
@@ -89,7 +89,7 @@ export default function DashboardScreen() {
         resultTimer.current = setTimeout(() => setMicState("idle"), 4000);
       }
     } catch (e: any) {
-      setErrorMsg(e.message || (language === "mr" ? "काहीतरी चूक झाली." : "Something went wrong."));
+      setErrorMsg(e.message || (t("dashboard.something_went_wrong")));
       setMicState("error");
       resultTimer.current = setTimeout(() => setMicState("idle"), 4000);
     }
@@ -106,12 +106,12 @@ export default function DashboardScreen() {
 
   useSpeechRecognitionEvent("error", (event) => {
     if (Platform.OS === "web") return;
-    const msg = event.message || event.error || (language === "mr" ? "काहीतरी चूक झाली." : "Something went wrong.");
+    const msg = event.message || event.error || (t("dashboard.something_went_wrong"));
     setErrorMsg(
       event.error === "no-speech"
-        ? (language === "mr" ? "आवाज ऐकू आला नाही. पुन्हा प्रयत्न करा." : "No speech detected. Please try again.")
+        ? (t("dashboard.no_speech_detected"))
         : event.error === "not-allowed"
-        ? (language === "mr" ? "माइक परवानगी नाकारली." : "Microphone permission denied.")
+        ? (t("dashboard.mic_denied"))
         : msg
     );
     setMicState("error");
@@ -121,7 +121,7 @@ export default function DashboardScreen() {
   useSpeechRecognitionEvent("end", () => {
     if (Platform.OS === "web") return;
     if (micStateRef.current === "listening") {
-      setErrorMsg(language === "mr" ? "आवाज ऐकू आला नाही. पुन्हा प्रयत्न करा." : "No speech detected. Please try again.");
+      setErrorMsg(t("dashboard.no_speech_detected"));
       setMicState("error");
       resultTimer.current = setTimeout(() => setMicState("idle"), 4000);
     }
@@ -139,7 +139,7 @@ export default function DashboardScreen() {
     if (Platform.OS !== "web") {
       const { granted } = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
       if (!granted) {
-        setErrorMsg(language === "mr" ? "माइक परवानगी नाकारली." : "Microphone permission denied.");
+        setErrorMsg(t("dashboard.mic_denied"));
         setMicState("error");
         resultTimer.current = setTimeout(() => setMicState("idle"), 4000);
         return;
@@ -188,7 +188,7 @@ export default function DashboardScreen() {
         resultTimer.current = setTimeout(() => setMicState("idle"), 4000);
       }
     } catch (e: any) {
-      setErrorMsg(e.message || (language === "mr" ? "काहीतरी चूक झाली." : "Something went wrong."));
+      setErrorMsg(e.message || (t("dashboard.something_went_wrong")));
       setMicState("error");
       resultTimer.current = setTimeout(() => setMicState("idle"), 4000);
     }
@@ -307,7 +307,7 @@ export default function DashboardScreen() {
                 style={[styles.headerMicBtn, { backgroundColor: micColors[micState] }]}
                 onPress={handleMicPress}
                 disabled={micState === "processing"}
-                accessibilityLabel={language === "mr" ? "व्हॉइस कमांड" : "Voice command"}
+                accessibilityLabel={t("dashboard.voice_command")}
                 accessibilityRole="button"
               >
                 <Ionicons name={micIcons[micState] as any} size={20} color="#fff" />
@@ -326,6 +326,37 @@ export default function DashboardScreen() {
           <StatCard icon="time" label={t("pendingPayments")} value={pendingPayments.length} color={Colors.light.pending} onPress={() => router.push("/(main)/payments")} />
           <StatCard icon="cash" label={t("activeLoans")} value={activeLoans.length} color={Colors.light.danger} onPress={() => router.push("/loans")} />
         </View>
+
+        {groupSummary && (
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>{t("dashboard.financial_summary")}</Text>
+            </View>
+            <View style={styles.summaryBox}>
+              <View style={styles.summaryRow}>
+                <Text style={styles.summaryLabel}>{t("dashboard.totalSavings")}</Text>
+                <Text style={styles.summaryValue}>Rs. {groupSummary.totalSavings}</Text>
+              </View>
+              <View style={styles.summaryRow}>
+                <Text style={styles.summaryLabel}>{t("dashboard.total_penalties")}</Text>
+                <Text style={styles.summaryValue}>Rs. {groupSummary.totalPenalties}</Text>
+              </View>
+              <View style={styles.summaryRow}>
+                <Text style={styles.summaryLabel}>{t("dashboard.loan_disbursed")}</Text>
+                <Text style={styles.summaryValue}>Rs. {groupSummary.totalLoanDisbursed}</Text>
+              </View>
+              <View style={styles.summaryRow}>
+                <Text style={styles.summaryLabel}>{t("dashboard.loan_repayments")}</Text>
+                <Text style={styles.summaryValue}>Rs. {groupSummary.totalRepayments}</Text>
+              </View>
+              <View style={styles.summaryDivider} />
+              <View style={styles.summaryRow}>
+                <Text style={[styles.summaryLabel, { fontFamily: "Poppins_600SemiBold", color: Colors.light.primary }]}>{t("dashboard.current_balance")}</Text>
+                <Text style={[styles.summaryValue, { fontFamily: "Poppins_700Bold", color: Colors.light.primary, fontSize: 18 }]}>Rs. {groupSummary.currentBalance}</Text>
+              </View>
+            </View>
+          </View>
+        )}
 
         {upcomingMeetings.length > 0 && (
           <View style={styles.section}>
@@ -415,12 +446,12 @@ export default function DashboardScreen() {
         <Animated.View style={[styles.voiceOverlay, { opacity: fadeAnim }]}>
           {micState === "listening" && (
             <Text style={styles.overlayListeningText}>
-              {language === "mr" ? "ऐकत आहे..." : "Listening..."}
+              {t("dashboard.listening")}
             </Text>
           )}
           {micState === "processing" && (
             <Text style={styles.overlayListeningText}>
-              {language === "mr" ? "समजत आहे..." : "Processing..."}
+              {t("dashboard.processing")}
             </Text>
           )}
           {(micState === "result" || micState === "error") && transcript ? (
@@ -460,11 +491,16 @@ const styles = StyleSheet.create({
     borderRadius: 19,
     justifyContent: "center",
     alignItems: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
-    shadowRadius: 4,
     elevation: 3,
+    ...Platform.select({
+      web: { boxShadow: "0px 2px 4px rgba(0,0,0,0.15)" },
+      default: {
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.15,
+        shadowRadius: 4,
+      },
+    }),
   },
   greeting: {
     fontFamily: "Poppins_400Regular",
@@ -655,10 +691,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     alignItems: "center",
     gap: 8,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25,
-    shadowRadius: 12,
+    elevation: 12,
+    ...Platform.select({
+      web: { boxShadow: "0px 4px 12px rgba(0,0,0,0.25)" },
+      default: {
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.25,
+        shadowRadius: 12,
+      },
+    }),
   },
   overlayListeningText: {
     fontFamily: "Poppins_500Medium",
@@ -690,15 +732,48 @@ const styles = StyleSheet.create({
     borderRadius: 34,
     justifyContent: "center",
     alignItems: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
     elevation: 8,
+    ...Platform.select({
+      web: { boxShadow: "0px 4px 8px rgba(0,0,0,0.3)" },
+      default: {
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.3,
+        shadowRadius: 8,
+      },
+    }),
   },
   fabLabel: {
     fontFamily: "Poppins_500Medium",
     fontSize: 11,
     color: Colors.light.textSecondary,
+  },
+  summaryBox: {
+    backgroundColor: Colors.light.card,
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: Colors.light.border,
+    gap: 12,
+  },
+  summaryRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  summaryLabel: {
+    fontFamily: "Poppins_400Regular",
+    fontSize: 14,
+    color: Colors.light.textSecondary,
+  },
+  summaryValue: {
+    fontFamily: "Poppins_500Medium",
+    fontSize: 15,
+    color: Colors.light.text,
+  },
+  summaryDivider: {
+    height: 1,
+    backgroundColor: Colors.light.border,
+    marginVertical: 4,
   },
 });

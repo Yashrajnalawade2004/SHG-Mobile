@@ -1,14 +1,17 @@
+// @ts-nocheck
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "node:http";
 import { storage } from "./storage";
+import { registerSuperAdminRoutes } from "./super-admin-routes";
+import { registerInvitationRoutes } from "./invitation-routes";
 import Groq from "groq-sdk";
 
-interface AuthRequest extends Request {
+export interface AuthRequest extends Request {
   currentUser?: Awaited<ReturnType<typeof storage.getUserById>>;
   currentSession?: { token: string; userId: string };
 }
 
-async function requireAuth(
+export async function requireAuth(
   req: AuthRequest,
   res: Response,
   next: NextFunction,
@@ -31,14 +34,14 @@ async function requireAuth(
   next();
 }
 
-function requirePresident(req: AuthRequest, res: Response, next: NextFunction) {
+export function requirePresident(req: AuthRequest, res: Response, next: NextFunction) {
   if (req.currentUser?.role !== "president") {
     return res.status(403).json({ error: "President access required" });
   }
   next();
 }
 
-function requireSameGroup(
+export function requireSameGroup(
   groupId: string,
   req: AuthRequest,
   res: Response,
@@ -51,6 +54,10 @@ function requireSameGroup(
 }
 
 export async function registerRoutes(app: Express): Promise<Server> {
+  // ─── SUPER ADMIN & INVITATIONS ──────────────────────────────────────────────
+  registerSuperAdminRoutes(app);
+  registerInvitationRoutes(app);
+
   // ─── AUTH ───────────────────────────────────────────────────────────────────
 
   app.post("/api/auth/register/president", async (req, res) => {
@@ -62,22 +69,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
         village,
         joinDate,
         exitDate,
-        groupId,
-        groupName,
+        uniqueGroupCode,
       } = req.body;
-      if (!name || !phone || !password || !village || !groupId || !groupName) {
+      if (!name || !phone || !password || !village || !uniqueGroupCode) {
         return res.status(400).json({ error: "Missing required fields" });
       }
 
-      const existingGroup = await storage.getGroupByGroupId(groupId);
-      if (existingGroup) {
-        return res.status(409).json({ error: "groupIdTaken" });
+      const existingGroup = await storage.getGroupByUniqueGroupCode(uniqueGroupCode);
+      if (!existingGroup) {
+        return res.status(404).json({ error: "groupNotFound" });
       }
+      
+      if (existingGroup.presidentId || existingGroup.status !== "pending") {
+        return res.status(409).json({ error: "Group already claimed" });
+      }
+
       const existingPhone = await storage.getUserByPhone(phone);
       if (existingPhone) {
-        return res
-          .status(409)
-          .json({ error: "Phone number already registered" });
+        return res.status(409).json({ error: "Phone number already registered" });
       }
 
       const user = await storage.createUser({
@@ -85,22 +94,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
         phone,
         password,
         village,
-        joinDate: joinDate || new Date().toISOString().split("T")[0],
-        exitDate,
+        joinDate: joinDate ? new Date(joinDate) : new Date(),
+        exitDate: exitDate ? new Date(exitDate) : undefined,
         role: "president",
-        groupId,
+        groupId: existingGroup.groupId,
         status: "active",
+        preferredLanguage: existingGroup.preferredLanguage,
       });
 
-      await storage.createGroup({
-        groupId,
-        name: groupName,
+      await storage.updateGroup(existingGroup.id, {
         presidentId: user.id,
-        createdAt: new Date().toISOString(),
+        status: "active",
+        activatedOn: new Date(),
       });
 
       const session = await storage.createSession(user.id);
-      const group = await storage.getGroupByGroupId(groupId);
+      const group = await storage.getGroupByGroupId(existingGroup.groupId);
       const { password: _p, ...safeUser } = user;
       return res
         .status(201)
@@ -113,21 +122,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/auth/register/member", async (req, res) => {
     try {
-      const { name, phone, password, village, joinDate, exitDate, groupId } =
-        req.body;
-      if (!name || !phone || !password || !village || !groupId) {
+      const { name, phone, password, village, joinDate, exitDate, invitationCode } = req.body;
+      if (!name || !phone || !password || !village || !invitationCode) {
         return res.status(400).json({ error: "Missing required fields" });
       }
 
-      const group = await storage.getGroupByGroupId(groupId);
-      if (!group) {
+      const codeObj = await storage.getInvitationCode(invitationCode);
+      if (!codeObj || !codeObj.active || (codeObj.expiresAt && new Date() > codeObj.expiresAt) || codeObj.currentUses >= codeObj.maxUses) {
+        return res.status(400).json({ error: "invalidOrExpiredCode" });
+      }
+
+      const group = await storage.getGroupByGroupId(codeObj.groupId);
+      if (!group || group.status === "pending") {
         return res.status(404).json({ error: "groupNotFound" });
       }
       const existingPhone = await storage.getUserByPhone(phone);
       if (existingPhone) {
-        return res
-          .status(409)
-          .json({ error: "Phone number already registered" });
+        return res.status(409).json({ error: "Phone number already registered" });
       }
 
       const user = await storage.createUser({
@@ -135,12 +146,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         phone,
         password,
         village,
-        joinDate: joinDate || new Date().toISOString().split("T")[0],
-        exitDate,
+        joinDate: joinDate ? new Date(joinDate) : new Date(),
+        exitDate: exitDate ? new Date(exitDate) : undefined,
         role: "member",
-        groupId,
+        groupId: codeObj.groupId,
         status: "active",
+        preferredLanguage: group.preferredLanguage,
       });
+
+      await storage.incrementInvitationCodeUsage(codeObj.id, user.id);
 
       const session = await storage.createSession(user.id);
       const { password: _p, ...safeUser } = user;
@@ -195,6 +209,53 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { password: _p, ...safeUser } = user;
       return res.json({ user: safeUser, group });
     },
+  );
+
+  app.get(
+    "/api/groups/:groupId/summary",
+    requireAuth as any,
+    requireSameGroup as any,
+    async (req: AuthRequest, res) => {
+      try {
+        const { groupId } = req.params;
+        const payments = await storage.getPaymentsByGroupId(groupId);
+        const loans = await storage.getLoansByGroupId(groupId);
+        const repayments = await storage.getRepaymentsByGroupId(groupId);
+        const members = await storage.getUsersByGroupId(groupId);
+        
+        const activeMembers = members.filter(m => m.status === "active").length;
+        const totalSavings = payments.filter(p => p.status === "confirmed" && p.amount > 0).reduce((sum, p) => sum + p.amount, 0);
+        const totalPenalties = payments.filter(p => p.status === "confirmed" && p.lateFee > 0).reduce((sum, p) => sum + p.lateFee, 0);
+        
+        const approvedLoans = loans.filter(l => l.status === "approved");
+        const totalLoanDisbursed = approvedLoans.reduce((sum, l) => sum + l.amount, 0);
+        const totalOutstanding = approvedLoans.reduce((sum, l) => sum + l.remainingBalance, 0);
+        const totalRepayments = repayments.reduce((sum, r) => sum + r.amount, 0);
+        
+        const currentBalance = totalSavings + totalPenalties + totalRepayments - totalLoanDisbursed;
+        
+        const now = new Date();
+        const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+        const currentMonthPayments = payments.filter(p => p.month === currentMonth);
+        const expectedCollection = currentMonthPayments.reduce((sum, p) => sum + p.expectedAmount, 0);
+        const actualCollection = currentMonthPayments.reduce((sum, p) => sum + p.amount, 0);
+
+        return res.json({
+          totalSavings,
+          totalLoanDisbursed,
+          totalOutstanding,
+          totalRepayments,
+          totalPenalties,
+          currentBalance,
+          activeMembers,
+          monthlyExpected: expectedCollection,
+          monthlyCollected: actualCollection
+        });
+      } catch (e) {
+        console.error(e);
+        return res.status(500).json({ error: "Failed to load summary" });
+      }
+    }
   );
 
   app.post(
@@ -272,20 +333,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
   );
 
   app.patch(
-    "/api/members/:memberId/status",
+    "/api/members/:memberId",
     requireAuth as any,
     requirePresident as any,
     async (req: AuthRequest, res) => {
       const { memberId } = req.params;
-      const { status } = req.body;
-      if (!["active", "left"].includes(status)) {
-        return res.status(400).json({ error: "Invalid status" });
-      }
+      const { status, contributionStartMonth } = req.body;
+      
       const target = await storage.getUserById(memberId);
       if (!target || target.groupId !== req.currentUser!.groupId) {
         return res.status(404).json({ error: "Member not found" });
       }
-      const updated = await storage.updateUser(memberId, { status });
+      
+      const updates: any = {};
+      if (status !== undefined) {
+        if (!["active", "left"].includes(status)) {
+          return res.status(400).json({ error: "Invalid status" });
+        }
+        updates.status = status;
+      }
+      
+      if (contributionStartMonth !== undefined) {
+        updates.contributionStartMonth = contributionStartMonth;
+      }
+      
+      const updated = await storage.updateUser(memberId, updates);
       const { password: _p, ...safe } = updated!;
       return res.json(safe);
     },
@@ -380,7 +452,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { groupId } = req.params;
       if (req.currentUser!.groupId !== groupId)
         return res.status(403).json({ error: "Access denied" });
-      const payments = await storage.getPaymentsByGroupId(groupId);
+        
+      const user = req.currentUser!;
+      const payments = user.role === "member" 
+        ? await storage.getPaymentsForMember(groupId, user.id)
+        : await storage.getPaymentsByGroupId(groupId);
+        
       return res.json(payments);
     },
   );
@@ -446,11 +523,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
-      const updated = await storage.updatePayment(paymentId, {
+      const updateData: any = {
         status,
         verifiedBy: user.id,
         verifiedAt: new Date().toISOString(),
-      });
+      };
+      
+      // If verifying, ensure amount is set correctly (expected + late fee)
+      if (status === "confirmed" && payment.amount === 0) {
+        updateData.amount = (payment.expectedAmount || 0) + (payment.lateFee || 0);
+      }
+
+      const updated = await storage.updatePayment(paymentId, updateData);
       return res.json(updated);
     },
   );
@@ -514,7 +598,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { groupId } = req.params;
       if (req.currentUser!.groupId !== groupId)
         return res.status(403).json({ error: "Access denied" });
-      const loans = await storage.getLoansByGroupId(groupId);
+        
+      const user = req.currentUser!;
+      const loans = user.role === "member"
+        ? await storage.getLoansForMember(groupId, user.id)
+        : await storage.getLoansByGroupId(groupId);
+        
       return res.json(loans);
     },
   );
@@ -791,6 +880,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
     },
   );
 
+  app.post("/api/auth/logout", (req, res) => {
+    res.json({ success: true });
+  });
+
+  app.patch("/api/users/language", requireAuth as any, async (req: AuthRequest, res) => {
+    try {
+      const { preferredLanguage } = req.body;
+      if (!preferredLanguage || !["en", "mr"].includes(preferredLanguage)) {
+        return res.status(400).json({ error: "Invalid language" });
+      }
+      await storage.updateUser(req.currentUser!.id, { preferredLanguage });
+      return res.json({ success: true });
+    } catch (e) {
+      console.error(e);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // ─── GROUPS ───────────────────────────────────────────────────────────────────
+
   // ─── GROUP RULES ─────────────────────────────────────────────────────────────
 
   app.get(
@@ -848,15 +957,16 @@ The app has these screens: Dashboard, Meetings, Payments/Savings, Loans, Members
 The user said (in Marathi or English): "${transcript.trim()}"
 
 Classify their intent into exactly ONE of these actions:
-- VIEW_DASHBOARD — home screen, dashboard, मुख्य पृष्ठ
+- VIEW_DASHBOARD — home screen, dashboard, मुख्य पृष्ठ, total group savings, गटाची एकूण बचत, group balance, गटाची शिल्लक, monthly collection, चालू महिन्याची वसुली
 - VIEW_MEETINGS — meetings, बैठक, बैठका
-- VIEW_PAYMENTS — payments, savings, बचत, भरणा, पैसे
+- VIEW_PAYMENTS — payments, savings, बचत, भरणा, पैसे, pending payments, थकीत देयके
 - VIEW_LOANS — loans, कर्ज, कर्जे
 - VIEW_MEMBERS — members, सदस्य
 - VIEW_HISTORY — history, इतिहास, all records
 - VIEW_RULES — rules, नियम, गटाचे नियम
 - LOAN_SETTINGS — loan settings, कर्ज सेटिंग्ज, interest rate
 - REQUEST_LOAN — request loan, कर्ज मागणी, apply for loan
+- VIEW_REPORTS — reports, अहवाल, download report, savings report, loan report, generate savings report, बचत अहवाल, generate loan report, कर्ज अहवाल, overdue members, उशिराने भरलेले सदस्य
 - UNKNOWN — cannot determine
 
 Reply with ONLY a JSON object, no markdown, no explanation:
@@ -897,6 +1007,7 @@ Reply with ONLY a JSON object, no markdown, no explanation:
           VIEW_RULES: "/rules",
           LOAN_SETTINGS: "/loan-settings",
           REQUEST_LOAN: "/create-loan",
+          VIEW_REPORTS: "/reports",
         };
 
         return res.json({

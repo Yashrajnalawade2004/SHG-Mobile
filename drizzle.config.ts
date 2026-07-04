@@ -3,9 +3,11 @@ import dotenv from "dotenv";
 
 dotenv.config();
 
-if (!process.env.DATABASE_URL) {
+const dbUrl = process.env.SUPABASE_DATABASE_URL || process.env.DATABASE_URL;
+
+if (!dbUrl) {
   throw new Error(
-    "DATABASE_URL is missing. Set it in your .env file (see .env.example)."
+    "DATABASE_URL or SUPABASE_DATABASE_URL is missing. Set it in your .env file."
   );
 }
 
@@ -14,6 +16,6 @@ export default defineConfig({
   schema: "./shared/schema.ts",
   dialect: "postgresql",
   dbCredentials: {
-    url: process.env.DATABASE_URL,
+    url: dbUrl,
   },
 });

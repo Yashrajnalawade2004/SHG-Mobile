@@ -107,6 +107,18 @@ export function validateLoanRequest(amount: number, duration: number, settings: 
 
 import { User } from "./AuthContext";
 
+export interface GroupSummary {
+  totalSavings: number;
+  totalLoanDisbursed: number;
+  totalOutstanding: number;
+  totalRepayments: number;
+  totalPenalties: number;
+  currentBalance: number;
+  activeMembers: number;
+  monthlyExpected: number;
+  monthlyCollected: number;
+}
+
 interface DataContextValue {
   meetings: Meeting[];
   payments: Payment[];
@@ -115,6 +127,7 @@ interface DataContextValue {
   groupMembers: User[];
   groupRules: string;
   groupSettings: GroupSettings;
+  groupSummary: GroupSummary | null;
   createMeeting: (data: { scheduledDate: string; agenda: string; notes: string }) => Promise<void>;
   updateMeeting: (id: string, data: Partial<Meeting>) => Promise<void>;
   cancelMeeting: (id: string) => Promise<void>;
@@ -134,7 +147,7 @@ interface DataContextValue {
   assignTreasurer: (userId: string | null) => Promise<void>;
   updateGroupRules: (rules: string) => Promise<void>;
   updateGroupSettings: (settings: GroupSettings) => Promise<void>;
-  updateMemberStatus: (memberId: string, status: "active" | "left") => Promise<void>;
+  updateMember: (memberId: string, data: Partial<User>) => Promise<void>;
   refreshData: () => Promise<void>;
 }
 
@@ -149,11 +162,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [groupMembers, setGroupMembers] = useState<User[]>([]);
   const [groupRules, setGroupRules] = useState("");
   const [groupSettings, setGroupSettings] = useState<GroupSettings>(DEFAULT_SETTINGS);
+  const [groupSummary, setGroupSummary] = useState<GroupSummary | null>(null);
 
   const loadData = useCallback(async () => {
     if (!user?.groupId) return;
     const gid = user.groupId;
-    const [m, p, l, r, members, rules, settings] = await Promise.allSettled([
+    const [m, p, l, r, members, rules, settings, summary] = await Promise.allSettled([
       apiGet<Meeting[]>(`/api/groups/${gid}/meetings`),
       apiGet<Payment[]>(`/api/groups/${gid}/payments`),
       apiGet<Loan[]>(`/api/groups/${gid}/loans`),
@@ -161,6 +175,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       apiGet<User[]>(`/api/groups/${gid}/members`),
       apiGet<{ rules: string }>(`/api/groups/${gid}/rules`),
       apiGet<GroupSettings>(`/api/groups/${gid}/settings`),
+      apiGet<GroupSummary>(`/api/groups/${gid}/summary`),
     ]);
     if (m.status === "fulfilled") setMeetings(m.value);
     if (p.status === "fulfilled") setPayments(p.value);
@@ -169,7 +184,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
     if (members.status === "fulfilled") setGroupMembers(members.value);
     if (rules.status === "fulfilled") setGroupRules(rules.value.rules);
     if (settings.status === "fulfilled") setGroupSettings(settings.value);
-    const failures = [m, p, l, r, members, rules, settings].filter((res) => res.status === "rejected");
+    if (summary.status === "fulfilled") setGroupSummary(summary.value);
+    const failures = [m, p, l, r, members, rules, settings, summary].filter((res) => res.status === "rejected");
     if (failures.length > 0) {
       console.warn(`${failures.length} data endpoint(s) failed to load:`, failures.map((f) => (f as PromiseRejectedResult).reason?.message));
     }
@@ -293,20 +309,27 @@ export function DataProvider({ children }: { children: ReactNode }) {
     setGroupSettings(settings);
   }, [user?.groupId]);
 
-  const updateMemberStatus = useCallback(async (memberId: string, status: "active" | "left") => {
-    const updated = await apiPatch<User>(`/api/members/${memberId}/status`, { status });
-    setGroupMembers((prev) => prev.map((m) => (m.id === memberId ? updated : m)));
+  const updateMember = useCallback(async (memberId: string, data: Partial<User>) => {
+    const updated = await apiPatch<User>(`/api/members/${memberId}`, data);
+    setGroupMembers((prev) => prev.map((m) => (m.id === memberId ? { ...m, ...updated } : m)));
   }, []);
 
+  const updateGroupInfo = async (data: any) => {
+    if (!group) return;
+    try {
+      await apiPatch(`/api/groups/${group.groupId}`, data);
+      await loadData();
+    } catch(e) {}
+  };
   const value = useMemo(
     () => ({
-      meetings, payments, loans, loanRepayments, groupMembers, groupRules, groupSettings,
+      meetings, payments, loans, loanRepayments, groupMembers, groupRules, groupSettings, groupSummary,
       createMeeting, updateMeeting, cancelMeeting, deleteMeeting,
       declarePayment, verifyPayment, deletePayment, uploadQrCode,
       requestLoan, treasurerApproveLoan, treasurerRejectLoan, approveLoan, rejectLoan, deleteLoan,
       addRepayment, deleteRepayment,
       assignTreasurer,
-      updateGroupRules, updateGroupSettings, updateMemberStatus, refreshData: loadData,
+      updateGroupRules, updateGroupSettings, updateGroupInfo, updateMember, refreshData: loadData,
     }),
     [meetings, payments, loans, loanRepayments, groupMembers, groupRules, groupSettings,
       createMeeting, updateMeeting, cancelMeeting, deleteMeeting,
@@ -314,7 +337,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       requestLoan, treasurerApproveLoan, treasurerRejectLoan, approveLoan, rejectLoan, deleteLoan,
       addRepayment, deleteRepayment,
       assignTreasurer,
-      updateGroupRules, updateGroupSettings, updateMemberStatus, loadData],
+      updateGroupRules, updateGroupSettings, updateGroupInfo, updateMember, loadData],
   );
 
   return <DataContext.Provider value={value}>{children}</DataContext.Provider>;

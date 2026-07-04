@@ -71,7 +71,7 @@ export default function RulesScreen() {
               value={editText}
               onChangeText={setEditText}
               multiline
-              placeholder={language === "en" ? "Enter group rules here..." : "गटाचे नियम येथे लिहा..."}
+              placeholder={t("settings.enter_group_rules")}
               placeholderTextColor={Colors.light.textMuted}
               textAlignVertical="top"
               autoFocus

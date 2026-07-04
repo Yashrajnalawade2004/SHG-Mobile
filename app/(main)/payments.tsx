@@ -119,7 +119,7 @@ function PaymentItem({
           onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onDelete(payment.id); }}
         >
           <Ionicons name="trash-outline" size={14} color={Colors.light.danger} />
-          <Text style={styles.deletePaymentText}>{language === "en" ? "Delete" : "हटवा"}</Text>
+          <Text style={styles.deletePaymentText}>{t("auto.delete")}</Text>
         </Pressable>
       )}
     </View>
@@ -148,7 +148,7 @@ export default function PaymentsScreen() {
   const handleAmountNext = () => {
     const numAmount = parseInt(amount);
     if (!numAmount || numAmount <= 0) {
-      Alert.alert(t("error"), language === "en" ? "Enter a valid amount" : "योग्य रक्कम टाका");
+      Alert.alert(t("error"), t("validation.enter_valid_amount"));
       return;
     }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -162,9 +162,7 @@ export default function PaymentsScreen() {
       if (!group?.qrCode) {
         Alert.alert(
           t("error"),
-          language === "en"
-            ? "No QR code available. Contact your Treasurer to upload one."
-            : "QR कोड उपलब्ध नाही. खजिनदाराला अपलोड करण्यास सांगा.",
+          t("auto.no_qr_code_available_contact"),
         );
         return;
       }
@@ -288,7 +286,7 @@ export default function PaymentsScreen() {
                 style={styles.qrPreview}
                 resizeMode="contain"
               />
-              <Text style={styles.qrTapHint}>{language === "en" ? "Tap to enlarge" : "मोठे करण्यासाठी टॅप करा"}</Text>
+              <Text style={styles.qrTapHint}>{t("auto.tap_to_enlarge")}</Text>
             </Pressable>
           ) : null}
           <View style={styles.qrActions}>
@@ -298,7 +296,7 @@ export default function PaymentsScreen() {
             <Pressable style={styles.qrConfirmBtn} onPress={handleConfirmOnlinePayment}>
               <Ionicons name="checkmark" size={18} color="#fff" />
               <Text style={styles.qrConfirmText}>
-                {language === "en" ? "I have paid" : "मी भरणा केला"}
+                {t("auto.i_have_paid")}
               </Text>
             </Pressable>
           </View>
@@ -335,18 +333,16 @@ export default function PaymentsScreen() {
             {group?.qrCode && (
               <Image source={{ uri: group.qrCode }} style={styles.qrModalImage} resizeMode="contain" />
             )}
-            <Text style={styles.qrModalClose}>{language === "en" ? "Tap anywhere to close" : "बंद करण्यासाठी टॅप करा"}</Text>
+            <Text style={styles.qrModalClose}>{t("auto.tap_anywhere_to_close")}</Text>
           </View>
         </Pressable>
       </Modal>
 
       <ConfirmDialog
         visible={deletePaymentId !== null}
-        title={language === "en" ? "Delete Payment?" : "देयक हटवायचे?"}
-        message={language === "en"
-          ? "This payment record will be permanently deleted."
-          : "ही देयक नोंद कायमची हटवली जाईल."}
-        confirmText={language === "en" ? "Delete" : "हटवा"}
+        title={t("auto.delete_payment")}
+        message={t("auto.this_payment_record_will_be")}
+        confirmText={t("auto.delete")}
         cancelText={t("cancel")}
         destructive
         onConfirm={handleConfirmDelete}

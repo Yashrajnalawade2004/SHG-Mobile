@@ -38,7 +38,7 @@ export default function LoanSettingsScreen() {
 
   const removeRule = (index: number) => {
     if (rules.length <= 1) {
-      Alert.alert(t("error"), language === "en" ? "At least one duration rule is required" : "किमान एक कालावधी नियम आवश्यक आहे");
+      Alert.alert(t("error"), t("validation.at_least_one_rule"));
       return;
     }
     setRules((prev) => prev.filter((_, i) => i !== index));
@@ -49,25 +49,25 @@ export default function LoanSettingsScreen() {
     const maxAmount = parseInt(maxLoanAmount);
 
     if (!rate || rate <= 0 || rate > 100) {
-      Alert.alert(t("error"), language === "en" ? "Interest rate must be between 0.1 and 100" : "व्याज दर ०.१ ते १०० च्या दरम्यान असावा");
+      Alert.alert(t("error"), t("validation.interest_rate_range"));
       return;
     }
     if (!maxAmount || maxAmount <= 0) {
-      Alert.alert(t("error"), language === "en" ? "Please enter a valid max loan amount" : "कृपया वैध कमाल कर्ज रक्कम टाका");
+      Alert.alert(t("error"), t("validation.valid_max_loan"));
       return;
     }
     for (let i = 0; i < rules.length; i++) {
       const rule = rules[i];
       if (!rule.maxAmount || rule.maxAmount <= 0) {
-        Alert.alert(t("error"), language === "en" ? `Rule ${i + 1}: Enter a valid amount` : `नियम ${i + 1}: वैध रक्कम टाका`);
+        Alert.alert(t("error"), t("validation.enter_valid_amount_rule").replace("{n}", String(i+1)));
         return;
       }
       if (!rule.minDuration || rule.minDuration <= 0) {
-        Alert.alert(t("error"), language === "en" ? `Rule ${i + 1}: Min duration must be at least 1` : `नियम ${i + 1}: किमान कालावधी १ असावा`);
+        Alert.alert(t("error"), t("validation.min_duration_one_rule").replace("{n}", String(i+1)));
         return;
       }
       if (!rule.maxDuration || rule.maxDuration < rule.minDuration) {
-        Alert.alert(t("error"), language === "en" ? `Rule ${i + 1}: Max duration must be ≥ min duration` : `नियम ${i + 1}: कमाल कालावधी किमानपेक्षा जास्त असावा`);
+        Alert.alert(t("error"), t("validation.max_duration_greater_rule").replace("{n}", String(i+1)));
         return;
       }
     }
@@ -87,11 +87,11 @@ export default function LoanSettingsScreen() {
   const handleReset = () => {
     Alert.alert(
       t("resetDefaults"),
-      language === "en" ? "Reset all loan settings to defaults?" : "सर्व कर्ज सेटिंग्ज डीफॉल्टवर रीसेट करायचे?",
+      t("auto.reset_all_loan_settings_to"),
       [
         { text: t("cancel"), style: "cancel" },
         {
-          text: language === "en" ? "Reset" : "रीसेट",
+          text: t("auto.reset"),
           style: "destructive",
           onPress: () => {
             setInterestRate(String(DEFAULT_SETTINGS.interestRate));
@@ -150,9 +150,7 @@ export default function LoanSettingsScreen() {
             <Text style={styles.suffix}>%</Text>
           </View>
           <Text style={styles.fieldHint}>
-            {language === "en"
-              ? "Applied automatically to all new loan requests"
-              : "सर्व नवीन कर्ज मागण्यांना आपोआप लागू होते"}
+            {t("auto.applied_automatically_to_all_new")}
           </Text>
         </View>
 
@@ -170,9 +168,7 @@ export default function LoanSettingsScreen() {
             />
           </View>
           <Text style={styles.fieldHint}>
-            {language === "en"
-              ? "No member can request a loan above this amount"
-              : "कोणताही सदस्य या रकमेपेक्षा जास्त कर्ज मागू शकत नाही"}
+            {t("auto.no_member_can_request_a")}
           </Text>
         </View>
 
@@ -185,9 +181,7 @@ export default function LoanSettingsScreen() {
             </Pressable>
           </View>
           <Text style={styles.fieldHint}>
-            {language === "en"
-              ? "Set allowed duration range based on loan amount. Rules are sorted by amount automatically."
-              : "कर्ज रकमेनुसार परवानगी कालावधी श्रेणी सेट करा. नियम रकमेनुसार आपोआप क्रमवारी लावले जातात."}
+            {t("auto.set_allowed_duration_range_based")}
           </Text>
 
           {rules.map((rule, i) => (
@@ -227,7 +221,7 @@ export default function LoanSettingsScreen() {
                       placeholder="1"
                       placeholderTextColor={Colors.light.textMuted}
                     />
-                    <Text style={styles.suffix}>{language === "en" ? "mo" : "म."}</Text>
+                    <Text style={styles.suffix}>{t("auto.mo")}</Text>
                   </View>
                 </View>
                 <View style={styles.durationSep}>
@@ -244,7 +238,7 @@ export default function LoanSettingsScreen() {
                       placeholder="12"
                       placeholderTextColor={Colors.light.textMuted}
                     />
-                    <Text style={styles.suffix}>{language === "en" ? "mo" : "म."}</Text>
+                    <Text style={styles.suffix}>{t("auto.mo")}</Text>
                   </View>
                 </View>
               </View>

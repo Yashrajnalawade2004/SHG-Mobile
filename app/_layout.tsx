@@ -35,6 +35,8 @@ function RootLayoutNav() {
       <Stack.Screen name="loan-settings" options={{ headerShown: false }} />
       <Stack.Screen name="rules" options={{ headerShown: false }} />
       <Stack.Screen name="history" options={{ headerShown: false }} />
+      <Stack.Screen name="shg-settings" options={{ headerShown: false }} />
+      <Stack.Screen name="reports" options={{ headerShown: false }} />
     </Stack>
   );
 }

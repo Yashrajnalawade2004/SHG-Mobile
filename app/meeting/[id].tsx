@@ -33,7 +33,7 @@ export default function MeetingDetailScreen() {
     return (
       <View style={[styles.container, { justifyContent: "center", alignItems: "center" }]}>
         <Ionicons name="alert-circle-outline" size={48} color={Colors.light.textMuted} />
-        <Text style={styles.emptyText}>{language === "en" ? "Meeting not found" : "बैठक सापडली नाही"}</Text>
+        <Text style={styles.emptyText}>{t("auto.meeting_not_found")}</Text>
       </View>
     );
   }
@@ -266,7 +266,7 @@ export default function MeetingDetailScreen() {
                 >
                   <Ionicons name="trash-outline" size={20} color={Colors.light.danger} />
                   <Text style={styles.deleteBtnText}>
-                    {language === "en" ? "Delete Meeting" : "बैठक हटवा"}
+                    {t("auto.delete_meeting")}
                   </Text>
                 </Pressable>
               </View>
@@ -277,12 +277,10 @@ export default function MeetingDetailScreen() {
 
       <ConfirmDialog
         visible={dialog === "cancel"}
-        title={language === "en" ? "Cancel Meeting?" : "बैठक रद्द करायची?"}
-        message={language === "en"
-          ? "The meeting will be marked as cancelled. Members will see it as cancelled."
-          : "बैठक रद्द म्हणून चिन्हांकित केली जाईल. सदस्यांना ती रद्द म्हणून दिसेल."}
-        confirmText={language === "en" ? "Yes, Cancel" : "हो, रद्द करा"}
-        cancelText={language === "en" ? "Keep" : "ठेवा"}
+        title={t("auto.cancel_meeting")}
+        message={t("auto.the_meeting_will_be_marked")}
+        confirmText={t("auto.yes_cancel")}
+        cancelText={t("auto.keep")}
         destructive={false}
         onConfirm={handleCancelMeeting}
         onCancel={() => setDialog(null)}
@@ -290,12 +288,10 @@ export default function MeetingDetailScreen() {
 
       <ConfirmDialog
         visible={dialog === "delete"}
-        title={language === "en" ? "Delete Meeting?" : "बैठक कायमची हटवायची?"}
-        message={language === "en"
-          ? "This meeting will be permanently deleted and cannot be recovered."
-          : "ही बैठक कायमची हटवली जाईल आणि पुनर्प्राप्त करता येणार नाही."}
-        confirmText={language === "en" ? "Delete" : "हटवा"}
-        cancelText={language === "en" ? "Keep" : "ठेवा"}
+        title={t("auto.delete_meeting_1")}
+        message={t("auto.this_meeting_will_be_permanently")}
+        confirmText={t("auto.delete")}
+        cancelText={t("auto.keep")}
         destructive
         onConfirm={handleDeleteMeeting}
         onCancel={() => setDialog(null)}

@@ -50,7 +50,7 @@ export default function LoanDetailScreen() {
     return (
       <View style={[styles.container, { justifyContent: "center", alignItems: "center" }]}>
         <Ionicons name="alert-circle-outline" size={48} color={Colors.light.textMuted} />
-        <Text style={styles.emptyText}>{language === "en" ? "Loan not found" : "कर्ज सापडले नाही"}</Text>
+        <Text style={styles.emptyText}>{t("auto.loan_not_found")}</Text>
       </View>
     );
   }
@@ -150,7 +150,7 @@ export default function LoanDetailScreen() {
           <View style={styles.workflowNote}>
             <Ionicons name="checkmark-circle" size={14} color={Colors.light.success} />
             <Text style={styles.workflowNoteText}>
-              {language === "en" ? "Treasurer approved · forwarded to President" : "खजिनदाराने मंजूर केले · अध्यक्षाकडे पाठवले"}
+              {t("auto.treasurer_approved_forwarded_to_president")}
             </Text>
           </View>
         )}
@@ -165,7 +165,7 @@ export default function LoanDetailScreen() {
             </View>
             <View style={styles.amountDetail}>
               <Text style={styles.amountDetailLabel}>{t("duration")}</Text>
-              <Text style={styles.amountDetailValue}>{loan.duration} {language === "en" ? "mo" : "म."}</Text>
+              <Text style={styles.amountDetailValue}>{loan.duration} {t("auto.mo")}</Text>
             </View>
             <View style={styles.amountDetail}>
               <Text style={styles.amountDetailLabel}>{t("remaining")}</Text>
@@ -179,7 +179,7 @@ export default function LoanDetailScreen() {
               <View style={styles.progressBar}>
                 <View style={[styles.progressFill, { width: `${Math.min(progress, 100)}%` as any }]} />
               </View>
-              <Text style={styles.progressText}>{Math.round(progress)}% {language === "en" ? "repaid" : "परतफेड"}</Text>
+              <Text style={styles.progressText}>{Math.round(progress)}% {t("auto.repaid")}</Text>
             </View>
           )}
         </View>
@@ -195,13 +195,11 @@ export default function LoanDetailScreen() {
             <View style={styles.approvalCardHeader}>
               <Ionicons name="wallet" size={18} color="#D97706" />
               <Text style={[styles.approvalCardTitle, { color: "#D97706" }]}>
-                {language === "en" ? "Treasurer Decision" : "खजिनदाराचा निर्णय"}
+                {t("auto.treasurer_decision")}
               </Text>
             </View>
             <Text style={styles.approvalCardSub}>
-              {language === "en"
-                ? "Your decision will be forwarded to the President if you approve."
-                : "आपण मंजूर केल्यास निर्णय अध्यक्षाकडे पाठवला जाईल."}
+              {t("auto.your_decision_will_be_forwarded")}
             </Text>
             <View style={styles.approvalButtons}>
               <Pressable style={[styles.approveBtn, { backgroundColor: Colors.light.success }]} onPress={() => setDialog("approveTreasurer")}>
@@ -221,7 +219,7 @@ export default function LoanDetailScreen() {
             <View style={styles.approvalCardHeader}>
               <Ionicons name="shield" size={18} color={Colors.light.primary} />
               <Text style={[styles.approvalCardTitle, { color: Colors.light.primary }]}>
-                {language === "en" ? "President's Final Decision" : "अध्यक्षाचा अंतिम निर्णय"}
+                {t("auto.president_s_final_decision")}
               </Text>
             </View>
             <Text style={styles.fieldLabel}>{t("resolutionNo")} *</Text>
@@ -229,12 +227,12 @@ export default function LoanDetailScreen() {
               style={[styles.editInput, resolutionError && { borderColor: Colors.light.danger }]}
               value={resolutionNo}
               onChangeText={(v) => { setResolutionNo(v); setResolutionError(false); }}
-              placeholder={language === "en" ? "Enter resolution number" : "ठराव क्रमांक टाका"}
+              placeholder={t("auto.enter_resolution_number")}
               placeholderTextColor={Colors.light.textMuted}
             />
             {resolutionError && (
               <Text style={{ color: Colors.light.danger, fontSize: 12, fontFamily: "Poppins_400Regular" }}>
-                {language === "en" ? "Resolution number is required" : "ठराव क्रमांक आवश्यक आहे"}
+                {t("auto.resolution_number_is_required")}
               </Text>
             )}
             <View style={styles.approvalButtons}>
@@ -300,12 +298,12 @@ export default function LoanDetailScreen() {
                 </View>
               ))
             ) : (
-              <Text style={styles.noRepayments}>{language === "en" ? "No repayments yet" : "अद्याप परतफेड नाही"}</Text>
+              <Text style={styles.noRepayments}>{t("auto.no_repayments_yet")}</Text>
             )}
 
             {repayments.length > 0 && (
               <View style={styles.totalRow}>
-                <Text style={styles.totalLabel}>{language === "en" ? "Total Repaid" : "एकूण परतफेड"}</Text>
+                <Text style={styles.totalLabel}>{t("auto.total_repaid")}</Text>
                 <Text style={styles.totalValue}>Rs. {totalRepaid.toLocaleString("en-IN")}</Text>
               </View>
             )}
@@ -316,7 +314,7 @@ export default function LoanDetailScreen() {
           <Pressable style={styles.deleteLoanBtn} onPress={() => setDialog("deleteLoan")}>
             <Ionicons name="trash-outline" size={20} color={Colors.light.danger} />
             <Text style={styles.deleteLoanBtnText}>
-              {language === "en" ? "Delete Loan" : "कर्ज हटवा"}
+              {t("auto.delete_loan")}
             </Text>
           </Pressable>
         )}
@@ -324,10 +322,8 @@ export default function LoanDetailScreen() {
 
       <ConfirmDialog
         visible={dialog === "approveTreasurer"}
-        title={language === "en" ? "Approve Loan Request?" : "कर्ज मागणी मंजूर करायची?"}
-        message={language === "en"
-          ? "This will forward the request to the President for final approval."
-          : "हे विनंती अंतिम मंजुरीसाठी अध्यक्षाकडे पाठवेल."}
+        title={t("auto.approve_loan_request")}
+        message={t("auto.this_will_forward_the_request")}
         confirmText={t("approve")}
         cancelText={t("cancel")}
         onConfirm={handleTreasurerApprove}
@@ -336,10 +332,8 @@ export default function LoanDetailScreen() {
 
       <ConfirmDialog
         visible={dialog === "rejectTreasurer"}
-        title={language === "en" ? "Reject Loan Request?" : "कर्ज मागणी नाकारायची?"}
-        message={language === "en"
-          ? "The member will be notified that their request was rejected by the treasurer."
-          : "सदस्याला कळवले जाईल की त्यांची मागणी खजिनदाराने नाकारली."}
+        title={t("auto.reject_loan_request")}
+        message={t("auto.the_member_will_be_notified")}
         confirmText={t("reject")}
         cancelText={t("cancel")}
         destructive
@@ -349,10 +343,8 @@ export default function LoanDetailScreen() {
 
       <ConfirmDialog
         visible={dialog === "rejectPresident"}
-        title={language === "en" ? "Reject This Loan?" : "हे कर्ज नाकारायचे?"}
-        message={language === "en"
-          ? "The member will be notified that their loan request was rejected."
-          : "सदस्याला कळवले जाईल की त्यांची कर्ज मागणी नाकारली गेली."}
+        title={t("auto.reject_this_loan")}
+        message={t("auto.the_member_will_be_notified_1")}
         confirmText={t("reject")}
         cancelText={t("cancel")}
         destructive
@@ -362,11 +354,9 @@ export default function LoanDetailScreen() {
 
       <ConfirmDialog
         visible={deleteRepaymentId !== null}
-        title={language === "en" ? "Delete Repayment?" : "परतफेड हटवायची?"}
-        message={language === "en"
-          ? "This repayment record will be permanently deleted."
-          : "ही परतफेड नोंद कायमची हटवली जाईल."}
-        confirmText={language === "en" ? "Delete" : "हटवा"}
+        title={t("auto.delete_repayment")}
+        message={t("auto.this_repayment_record_will_be")}
+        confirmText={t("auto.delete")}
         cancelText={t("cancel")}
         destructive
         onConfirm={handleDeleteRepayment}
@@ -375,12 +365,10 @@ export default function LoanDetailScreen() {
 
       <ConfirmDialog
         visible={dialog === "deleteLoan"}
-        title={language === "en" ? "Delete Loan?" : "कर्ज कायमचे हटवायचे?"}
-        message={language === "en"
-          ? "This loan record will be permanently deleted and cannot be recovered."
-          : "ही कर्ज नोंद कायमची हटवली जाईल आणि पुनर्प्राप्त करता येणार नाही."}
-        confirmText={language === "en" ? "Delete" : "हटवा"}
-        cancelText={language === "en" ? "Keep" : "ठेवा"}
+        title={t("auto.delete_loan_1")}
+        message={t("auto.this_loan_record_will_be")}
+        confirmText={t("auto.delete")}
+        cancelText={t("auto.keep")}
         destructive
         onConfirm={handleDeleteLoan}
         onCancel={() => setDialog(null)}

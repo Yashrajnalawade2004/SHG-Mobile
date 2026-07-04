@@ -4,8 +4,8 @@
   "version": "1.0.0",
   "scripts": {
     "postinstall": "patch-package",
-    "expo:dev": "node_modules/.bin/expo start --web --localhost --port 8081",
-    "build:web": "node_modules/.bin/expo export --platform web --output-dir web-build",
+    "expo:dev": "npx expo start --web --localhost --port 8081",
+    "build:web": "npx expo export --platform web --output-dir web-build",
     "server:dev": "cross-env NODE_ENV=development tsx server/index.ts",
     "expo:start:static:build": "npx expo start --no-dev --minify --localhost",
     "expo:static:build": "node scripts/build.js",

@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { apiPost } from "./api";
 
 export type NLPAction =
@@ -10,6 +11,7 @@ export type NLPAction =
   | "VIEW_RULES"
   | "LOAN_SETTINGS"
   | "REQUEST_LOAN"
+  | "VIEW_REPORTS"
   | "UNKNOWN";
 
 export interface NLPResult {

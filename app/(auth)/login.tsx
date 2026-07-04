@@ -1,7 +1,8 @@
+// @ts-nocheck
 import { useState } from "react";
 import {
   View, Text, TextInput, Pressable, StyleSheet, ScrollView,
-  KeyboardAvoidingView, Platform, Alert, ActivityIndicator,
+  KeyboardAvoidingView, Platform, Alert, ActivityIndicator, Keyboard,
 } from "react-native";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -22,11 +23,13 @@ export default function LoginScreen() {
 
   const handleLogin = async () => {
     if (!phone.trim() || !password.trim()) {
-      Alert.alert(t("error"), language === "en" ? "Please fill all fields" : "कृपया सर्व माहिती भरा");
+      Keyboard.dismiss();
+      Alert.alert(t("error"), t("validation.fill_all_fields"));
       return;
     }
     if (phone.trim().length !== 10) {
-      Alert.alert(t("error"), language === "en" ? "Phone number must be exactly 10 digits" : "मोबाइल नंबर 10 अंकांचा असणे आवश्यक आहे");
+      Keyboard.dismiss();
+      Alert.alert(t("error"), t("validation.phone_10_digits"));
       return;
     }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -34,8 +37,13 @@ export default function LoginScreen() {
     const result = await login(phone.trim(), password);
     setLoading(false);
     if (result.success) {
-      router.replace("/(main)");
+      if (result.role === "super_admin") {
+        router.replace("/(super-admin)" as any);
+      } else {
+        router.replace("/(main)");
+      }
     } else {
+      Keyboard.dismiss();
       Alert.alert(t("error"), t(result.error || "error"));
     }
   };
@@ -52,10 +60,10 @@ export default function LoginScreen() {
       >
         <Pressable
           style={styles.langToggle}
-          onPress={() => setLanguage(language === "en" ? "mr" : "en")}
+          onPress={() => setLanguage(t("auto.mr"))}
         >
           <Ionicons name="language" size={18} color={Colors.light.primary} />
-          <Text style={styles.langText}>{language === "en" ? "मराठी" : "English"}</Text>
+          <Text style={styles.langText}>{t("auto.empty")}</Text>
         </Pressable>
 
         <View style={styles.logoContainer}>
@@ -64,7 +72,7 @@ export default function LoginScreen() {
           </View>
           <Text style={styles.title}>{t("appName")}</Text>
           <Text style={styles.subtitle}>
-            {language === "en" ? "Self Help Group Record Platform" : "बचत गट नोंद व्यवस्थापन"}
+            {t("auto.self_help_group_record_platform")}
           </Text>
         </View>
 

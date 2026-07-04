@@ -45,12 +45,12 @@ export default function CreateMeetingScreen() {
 
   const handleCreate = async () => {
     if (!scheduledDate.trim() || !agenda.trim()) {
-      Alert.alert(t("error"), language === "en" ? "Please fill date and agenda" : "कृपया तारीख आणि कार्यसूची भरा");
+      Alert.alert(t("error"), t("validation.fill_date_agenda"));
       return;
     }
     const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
     if (!dateRegex.test(scheduledDate.trim())) {
-      Alert.alert(t("error"), language === "en" ? "Please select a valid date" : "कृपया योग्य तारीख निवडा");
+      Alert.alert(t("error"), t("validation.select_valid_date"));
       return;
     }
     try {
@@ -116,7 +116,7 @@ export default function CreateMeetingScreen() {
             <Ionicons name="document-text-outline" size={20} color={Colors.light.textSecondary} style={[styles.inputIcon, { marginTop: 14 }]} />
             <TextInput
               style={[styles.input, { minHeight: 80, textAlignVertical: "top" }]}
-              placeholder={language === "en" ? "Meeting agenda..." : "बैठक कार्यसूची..."}
+              placeholder={t("auto.meeting_agenda")}
               placeholderTextColor={Colors.light.textMuted}
               value={agenda}
               onChangeText={setAgenda}
@@ -129,7 +129,7 @@ export default function CreateMeetingScreen() {
             <Ionicons name="create-outline" size={20} color={Colors.light.textSecondary} style={[styles.inputIcon, { marginTop: 14 }]} />
             <TextInput
               style={[styles.input, { minHeight: 80, textAlignVertical: "top" }]}
-              placeholder={language === "en" ? "Additional notes..." : "अतिरिक्त टिप्पणी..."}
+              placeholder={t("auto.additional_notes")}
               placeholderTextColor={Colors.light.textMuted}
               value={notes}
               onChangeText={setNotes}

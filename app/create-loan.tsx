@@ -57,7 +57,7 @@ export default function CreateLoanScreen() {
     }
 
     if (!numDuration || numDuration <= 0) {
-      setDurationError(language === "en" ? "Please enter a valid duration" : "कृपया वैध कालावधी टाका");
+      setDurationError(t("auto.please_enter_a_valid_duration"));
       valid = false;
     } else if (applicableRule) {
       if (numDuration < applicableRule.minDuration) {
@@ -82,12 +82,12 @@ export default function CreateLoanScreen() {
 
   const handlePasswordSubmit = async () => {
     if (!password.trim()) {
-      setPasswordError(language === "en" ? "Please enter your password" : "कृपया पासवर्ड टाका");
+      setPasswordError(t("auto.please_enter_your_password"));
       return;
     }
     const isValid = await verifyPassword(password);
     if (!isValid) {
-      setPasswordError(language === "en" ? "Incorrect password" : "चुकीचा पासवर्ड");
+      setPasswordError(t("auto.incorrect_password"));
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       return;
     }
@@ -128,13 +128,13 @@ export default function CreateLoanScreen() {
           <View style={styles.policyRow}>
             <View style={styles.policyItem}>
               <Ionicons name="trending-up" size={18} color={Colors.light.secondary} />
-              <Text style={styles.policyLabel}>{language === "en" ? "Interest" : "व्याज"}</Text>
+              <Text style={styles.policyLabel}>{t("auto.interest")}</Text>
               <Text style={styles.policyValue}>{groupSettings.interestRate}%</Text>
             </View>
             <View style={styles.policyDivider} />
             <View style={styles.policyItem}>
               <Ionicons name="cash" size={18} color={Colors.light.primary} />
-              <Text style={styles.policyLabel}>{language === "en" ? "Max Loan" : "कमाल कर्ज"}</Text>
+              <Text style={styles.policyLabel}>{t("auto.max_loan")}</Text>
               <Text style={styles.policyValue}>Rs. {groupSettings.maxLoanAmount.toLocaleString("en-IN")}</Text>
             </View>
           </View>
@@ -173,7 +173,7 @@ export default function CreateLoanScreen() {
               onChangeText={(v) => { setDuration(v); setDurationError(""); }}
               keyboardType="number-pad"
             />
-            <Text style={styles.suffix}>{language === "en" ? "months" : "महिने"}</Text>
+            <Text style={styles.suffix}>{t("auto.months")}</Text>
           </View>
           {!!durationError && <Text style={styles.errorText}>{durationError}</Text>}
 
@@ -207,9 +207,7 @@ export default function CreateLoanScreen() {
           <View style={styles.securityNote}>
             <Ionicons name="lock-closed" size={16} color={Colors.light.secondary} />
             <Text style={styles.securityText}>
-              {language === "en"
-                ? "Password verification required before submitting"
-                : "सबमिट करण्यापूर्वी पासवर्ड सत्यापन आवश्यक"}
+              {t("auto.password_verification_required_before_submitting")}
             </Text>
           </View>
 
@@ -242,24 +240,22 @@ export default function CreateLoanScreen() {
               <View style={styles.modalIconWrapper}>
                 <Ionicons name="shield-checkmark" size={32} color={Colors.light.secondary} />
               </View>
-              <Text style={styles.modalTitle}>{language === "en" ? "Verify Identity" : "ओळख सत्यापित करा"}</Text>
+              <Text style={styles.modalTitle}>{t("auto.verify_identity")}</Text>
               <Text style={styles.modalSubtitle}>
-                {language === "en"
-                  ? "Enter your password to confirm this loan request"
-                  : "या कर्ज मागणीची पुष्टी करण्यासाठी पासवर्ड टाका"}
+                {t("auto.enter_your_password_to_confirm")}
               </Text>
               <View style={styles.modalSummary}>
                 <Text style={styles.modalSummaryText}>
-                  {language === "en" ? "Amount" : "रक्कम"}: Rs. {numAmount.toLocaleString("en-IN")}
-                  {"  ·  "}{language === "en" ? "Duration" : "कालावधी"}: {numDuration} {language === "en" ? "mo" : "महिने"}
-                  {"  ·  "}{language === "en" ? "Interest" : "व्याज"}: {groupSettings.interestRate}%
+                  {t("auto.amount")}: Rs. {numAmount.toLocaleString("en-IN")}
+                  {"  ·  "}{t("auto.duration")}: {numDuration} {t("auto.mo")}
+                  {"  ·  "}{t("auto.interest")}: {groupSettings.interestRate}%
                 </Text>
               </View>
               <View style={styles.modalInputContainer}>
                 <Ionicons name="lock-closed-outline" size={20} color={Colors.light.textSecondary} />
                 <TextInput
                   style={styles.modalInput}
-                  placeholder={language === "en" ? "Enter password" : "पासवर्ड टाका"}
+                  placeholder={t("auto.enter_password")}
                   placeholderTextColor={Colors.light.textMuted}
                   value={password}
                   onChangeText={(v) => { setPassword(v); setPasswordError(""); }}
