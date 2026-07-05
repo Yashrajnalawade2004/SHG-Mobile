@@ -361,7 +361,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       assignTreasurer,
       updateGroupRules, updateGroupSettings, updateGroupInfo, updateMember, refreshData: loadData,
     }),
-    [meetings, payments, loans, loanRepayments, groupMembers, groupRules, groupSettings,
+    [meetings, payments, loans, loanRepayments, groupMembers, groupRules, groupSettings, groupSummary,
       createMeeting, updateMeeting, cancelMeeting, deleteMeeting,
       declarePayment, verifyPayment, reopenPayment, deletePayment, uploadQrCode,
       requestLoan, treasurerApproveLoan, treasurerRejectLoan, approveLoan, rejectLoan, deleteLoan,

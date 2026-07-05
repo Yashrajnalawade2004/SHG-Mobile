@@ -29,6 +29,14 @@ export const translations: Record<string, any> = {
     "pending_president": { "en": "Pending President", "mr": "अध्यक्ष प्रलंबित" },
     "treasurer_approved": { "en": "Treasurer Approved", "mr": "खजिनदार मंजूर" },
     "president_approved": { "en": "President Approved", "mr": "अध्यक्ष मंजूर" },
+    "override_history": { "en": "Override History", "mr": "अधिलिखित इतिहास" },
+    "approval_timeline": { "en": "Approval Timeline", "mr": "मंजुरीचा कालरेखा" },
+    "loan_requested": { "en": "Loan Requested", "mr": "कर्ज मागणी केली" },
+    "treasurer_review_pending": { "en": "Treasurer Review Pending", "mr": "खजिनदाराची पुनरावलोकन प्रलंबित" },
+    "treasurer_reviewed": { "en": "Treasurer Reviewed", "mr": "खजिनदाराने पुनरावलोकन केले" },
+    "president_rejected": { "en": "President Rejected", "mr": "अध्यक्षाने नाकारले" },
+    "direct_approve": { "en": "Direct Approve", "mr": "थेट मंजूर करा" },
+    "direct_reject": { "en": "Direct Reject", "mr": "थेट नकारा" },
     "rejection_reason": { "en": "Rejection Reason", "mr": "नाकारण्याचे कारण" },
     "reject": { "en": "Reject", "mr": "नाकार" },
     "appname": {
@@ -452,6 +460,26 @@ export const translations: Record<string, any> = {
     "paymentnotreceived": {
       "en": "Not Received",
       "mr": "मिळाला नाही"
+    },
+    "reopen_payment": {
+      "en": "Reopen",
+      "mr": "पुन्हा उघडा"
+    },
+    "confirm_directly": {
+      "en": "Confirm Directly",
+      "mr": "थेट पुष्टी करा"
+    },
+    "reject_again": {
+      "en": "Reject Again",
+      "mr": "पुन्हा नकारा"
+    },
+    "overridden_by_president": {
+      "en": "Overridden by President",
+      "mr": "अध्यक्षांनी निर्णय बदलला"
+    },
+    "payment_reopened": {
+      "en": "Payment reopened",
+      "mr": "देयक पुन्हा उघडले"
     },
     "uploadqrcode": {
       "en": "Upload QR Code",

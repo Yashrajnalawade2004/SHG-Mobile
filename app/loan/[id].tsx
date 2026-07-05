@@ -124,6 +124,7 @@ export default function LoanDetailScreen() {
   const showTreasurerActions = isTreasurer && loan.status === "pending_treasurer";
   const showPresidentActions = isPresident && (loan.status === "pending_president" || loan.status === "pending_treasurer");
   const isDirectOverride = loan.presidentOverride === true;
+  const isFinal = loan.status === "approved" || loan.status === "rejected" || loan.status === "treasurer_rejected";
   const showRepayment = loan.status === "approved";
   const canDelete = isPresident && loan.status !== "approved";
 
@@ -207,10 +208,10 @@ export default function LoanDetailScreen() {
           <Text style={styles.infoRow}>{t("date")}: {new Date(loan.createdAt).toLocaleDateString("en-IN")}</Text>
         </View>
 
-        {(loan.status === "rejected" || loan.status === "treasurer_rejected") && loan.rejectionReason && (
+        {(loan.status === "rejected" || loan.status === "treasurer_rejected") && (
           <View style={styles.rejectionBox}>
             <Text style={styles.rejectionLabel}>{t("rejection_reason")}:</Text>
-            <Text style={styles.rejectionText}>{loan.rejectionReason}</Text>
+            <Text style={styles.rejectionText}>{loan.rejectionReason || t("no_remarks_provided")}</Text>
             {loan.rejectedAt && (
               <Text style={styles.rejectionMeta}>
                 {t("rejected_on")} {new Date(loan.rejectedAt).toLocaleDateString("en-IN")}
@@ -218,16 +219,44 @@ export default function LoanDetailScreen() {
             )}
           </View>
         )}
-        {(loan.status === "rejected" || loan.status === "treasurer_rejected") && !loan.rejectionReason && (
-          <View style={styles.rejectionBox}>
-            <Text style={styles.rejectionText}>{t("no_remarks_provided")}</Text>
-            {loan.rejectedAt && (
-              <Text style={styles.rejectionMeta}>
-                {t("rejected_on")} {new Date(loan.rejectedAt).toLocaleDateString("en-IN")}
+
+        {loan.overrideReason && (
+          <View style={[styles.rejectionBox, { backgroundColor: "#F59E0B15", borderColor: "#FDE68A" }]}> 
+            <Text style={[styles.rejectionLabel, { color: "#D97706" }]}>{t("override_history")}</Text>
+            <Text style={[styles.rejectionText, { color: "#92400E" }]}>{loan.overrideReason}</Text>
+            {loan.overrideAt && (
+              <Text style={[styles.rejectionMeta, { color: "#92400E" }]}> 
+                {new Date(loan.overrideAt).toLocaleDateString("en-IN")}
               </Text>
             )}
           </View>
         )}
+
+        <View style={styles.timelineCard}>
+          <Text style={styles.timelineTitle}>{t("approval_timeline")}</Text>
+          <View style={styles.timelineStep}>
+            <Text style={styles.timelineStepTitle}>{t("loan_requested")}</Text>
+            <Text style={styles.timelineMeta}>{new Date(loan.createdAt).toLocaleDateString("en-IN")}</Text>
+          </View>
+          {loan.status === "pending_treasurer" && (
+            <View style={styles.timelineStep}>
+              <Text style={styles.timelineStepTitle}>{t("treasurer_review_pending")}</Text>
+              <Text style={styles.timelineMeta}>{t("pending")}</Text>
+            </View>
+          )}
+          {(loan.status === "pending_president" || loan.status === "approved" || loan.status === "rejected" || loan.status === "treasurer_rejected") && (
+            <View style={styles.timelineStep}>
+              <Text style={styles.timelineStepTitle}>{loan.treasurerActionAt ? t("treasurer_reviewed") : t("treasurer_review_pending")}</Text>
+              <Text style={styles.timelineMeta}>{loan.treasurerActionAt ? new Date(loan.treasurerActionAt).toLocaleDateString("en-IN") : t("pending")}</Text>
+            </View>
+          )}
+          {isFinal && (
+            <View style={styles.timelineStep}>
+              <Text style={styles.timelineStepTitle}>{loan.status === "approved" ? t("president_approved") : t("president_rejected")}</Text>
+              <Text style={styles.timelineMeta}>{loan.approvedAt ? new Date(loan.approvedAt).toLocaleDateString("en-IN") : t("pending")}</Text>
+            </View>
+          )}
+        </View>
 
         {showTreasurerActions && (
           <View style={styles.approvalCard}>
@@ -546,6 +575,36 @@ const styles = StyleSheet.create({
     gap: 10,
     borderWidth: 1,
     borderColor: Colors.light.border,
+  },
+  timelineCard: {
+    backgroundColor: Colors.light.card,
+    borderRadius: 14,
+    padding: 16,
+    marginBottom: 12,
+    gap: 8,
+    borderWidth: 1,
+    borderColor: Colors.light.border,
+  },
+  timelineTitle: {
+    fontFamily: "Poppins_600SemiBold",
+    fontSize: 14,
+    color: Colors.light.text,
+  },
+  timelineStep: {
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.light.border,
+  },
+  timelineStepTitle: {
+    fontFamily: "Poppins_500Medium",
+    fontSize: 13,
+    color: Colors.light.text,
+  },
+  timelineMeta: {
+    fontFamily: "Poppins_400Regular",
+    fontSize: 12,
+    color: Colors.light.textSecondary,
+    marginTop: 2,
   },
   approvalCardHeader: {
     flexDirection: "row",

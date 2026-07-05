@@ -74,6 +74,12 @@ export interface Payment {
   status: PaymentStatus;
   verifiedBy?: string;
   verifiedAt?: string;
+  rejectionReason?: string;
+  rejectedBy?: string;
+  rejectedAt?: string;
+  overriddenBy?: string;
+  overrideReason?: string;
+  overrideAt?: string;
 }
 
 export type LoanStatus =
@@ -100,6 +106,12 @@ export interface Loan {
   approvedAt?: string;
   meetingId?: string;
   createdAt: string;
+  rejectionReason?: string;
+  rejectedBy?: string;
+  rejectedAt?: string;
+  presidentOverride?: boolean;
+  overrideReason?: string;
+  overrideAt?: string;
 }
 
 export interface LoanRepayment {

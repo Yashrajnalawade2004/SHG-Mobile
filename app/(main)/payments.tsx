@@ -62,11 +62,9 @@ function PaymentItem({
     (payment.mode === "cash" && canVerifyCash && payment.status === "pending") ||
     (payment.mode === "online" && canVerifyOnline && payment.status === "pending_verification");
 
-  // President override access: can verify/reject even if already confirmed/rejected
-  const canOverride =
-    isPresident && (payment.status === "confirmed" || payment.status === "rejected" || payment.status === "payment_not_received");
-
-  const canAct = canVerifyNormally || canOverride;
+  const isFinal = payment.status === "confirmed" || payment.status === "rejected" || payment.status === "payment_not_received";
+  const canOverride = isPresident && isFinal;
+  const canAct = canVerifyNormally || (isPresident && (!isFinal || (payment.status === "rejected" || payment.status === "payment_not_received")));
   const isRejected = payment.status === "rejected" || payment.status === "payment_not_received";
 
   return (
@@ -124,18 +122,34 @@ function PaymentItem({
         </View>
       )}
 
-      {/* Reopen Action for President */}
+      {/* President override actions for rejected payments */}
       {isPresident && isRejected && (
-        <Pressable
-          style={[styles.actionBtn, { backgroundColor: Colors.light.primary + "15", marginHorizontal: 16, marginBottom: canAct ? 0 : 16, marginTop: 8 }]}
-          onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onReopen(payment.id); }}
-        >
-          <Ionicons name="refresh-circle" size={18} color={Colors.light.primary} />
-          <Text style={[styles.actionText, { color: Colors.light.primary }]}>{t("reopen_payment")}</Text>
-        </Pressable>
+        <View style={styles.overrideActions}>
+          <Pressable
+            style={[styles.actionBtn, { backgroundColor: Colors.light.primary + "15", marginHorizontal: 0, marginBottom: 0, marginTop: 0 }]}
+            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onReopen(payment.id); }}
+          >
+            <Ionicons name="refresh-circle" size={18} color={Colors.light.primary} />
+            <Text style={[styles.actionText, { color: Colors.light.primary }]}>{t("reopen_payment")}</Text>
+          </Pressable>
+          <Pressable
+            style={[styles.actionBtn, { backgroundColor: Colors.light.success + "15", marginHorizontal: 0, marginBottom: 0, marginTop: 0 }]}
+            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onVerify(payment.id, "confirmed"); }}
+          >
+            <Ionicons name="checkmark-circle" size={18} color={Colors.light.success} />
+            <Text style={[styles.actionText, { color: Colors.light.success }]}>{t("confirm_directly")}</Text>
+          </Pressable>
+          <Pressable
+            style={[styles.actionBtn, { backgroundColor: Colors.light.danger + "15", marginHorizontal: 0, marginBottom: 0, marginTop: 0 }]}
+            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onReject(payment.id, "rejected"); }}
+          >
+            <Ionicons name="close-circle" size={18} color={Colors.light.danger} />
+            <Text style={[styles.actionText, { color: Colors.light.danger }]}>{t("reject_again")}</Text>
+          </Pressable>
+        </View>
       )}
 
-      {canAct && (
+      {canAct && !isRejected && (
         <View style={styles.actionRow}>
           {payment.mode === "cash" ? (
             <>
@@ -695,6 +709,10 @@ const styles = StyleSheet.create({
   paymentStatus: { fontFamily: "Poppins_500Medium", fontSize: 11 },
   actionRow: {
     flexDirection: "row", gap: 10, marginTop: 12,
+    paddingTop: 12, borderTopWidth: 1, borderTopColor: Colors.light.border,
+  },
+  overrideActions: {
+    flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 12,
     paddingTop: 12, borderTopWidth: 1, borderTopColor: Colors.light.border,
   },
   actionBtn: {

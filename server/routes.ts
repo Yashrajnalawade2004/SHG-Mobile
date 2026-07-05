@@ -552,6 +552,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
+      if (status === "confirmed") {
+        updateData.verifiedBy = user.id;
+        updateData.verifiedAt = new Date();
+      }
+
       // If verifying, ensure amount is set correctly (expected + late fee)
       if (status === "confirmed" && payment.amount === 0) {
         updateData.amount = (payment.expectedAmount || 0) + (payment.lateFee || 0);
