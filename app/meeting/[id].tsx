@@ -22,6 +22,7 @@ export default function MeetingDetailScreen() {
   const meeting = meetings.find((m) => m.id === id);
 
   const canManage = isPresident || isTreasurer;
+  const canEditDetails = isPresident;
 
   const [editing, setEditing] = useState(false);
   const [editDate, setEditDate] = useState(meeting?.scheduledDate || "");
@@ -249,7 +250,7 @@ export default function MeetingDetailScreen() {
                     <Text style={styles.completeBtnText}>{t("completed")}</Text>
                   </Pressable>
                 )}
-                {meeting.status === "scheduled" && (
+                {canEditDetails && meeting.status === "scheduled" && (
                   <Pressable
                     style={styles.cancelBtn}
                     onPress={() => setDialog("cancel")}
@@ -261,16 +262,16 @@ export default function MeetingDetailScreen() {
                     </Text>
                   </Pressable>
                 )}
-                <Pressable
-                  style={styles.deleteBtn}
-                  onPress={() => setDialog("delete")}
-                  disabled={actionLoading}
-                >
-                  <Ionicons name="trash-outline" size={20} color={Colors.light.danger} />
-                  <Text style={styles.deleteBtnText}>
-                    {t("auto.delete_meeting")}
-                  </Text>
-                </Pressable>
+                {canEditDetails && (
+                  <Pressable
+                    style={styles.deleteBtn}
+                    onPress={() => setDialog("delete")}
+                    disabled={actionLoading}
+                  >
+                    <Ionicons name="trash-outline" size={20} color={Colors.light.danger} />
+                    <Text style={styles.deleteBtnText}>{t("deleteMeeting")}</Text>
+                  </Pressable>
+                )}
               </View>
             )}
           </>

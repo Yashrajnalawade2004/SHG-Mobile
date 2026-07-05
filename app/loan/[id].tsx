@@ -122,7 +122,8 @@ export default function LoanDetailScreen() {
   };
 
   const showTreasurerActions = isTreasurer && loan.status === "pending_treasurer";
-  const showPresidentActions = isPresident && loan.status === "pending_president";
+  const showPresidentActions = isPresident && (loan.status === "pending_president" || loan.status === "pending_treasurer");
+  const isDirectOverride = loan.presidentOverride === true;
   const showRepayment = loan.status === "approved";
   const canDelete = isPresident && loan.status !== "approved";
 
@@ -153,11 +154,20 @@ export default function LoanDetailScreen() {
           <Text style={[styles.statusLabel, { color }]}>{t(loan.status)}</Text>
         </View>
 
-        {loan.status === "pending_president" && loan.treasurerActionAt && (
+        {loan.status === "pending_president" && loan.treasurerActionAt && !isDirectOverride && (
           <View style={styles.workflowNote}>
             <Ionicons name="checkmark-circle" size={14} color={Colors.light.success} />
             <Text style={styles.workflowNoteText}>
               {t("auto.treasurer_approved_forwarded_to_president")}
+            </Text>
+          </View>
+        )}
+
+        {isDirectOverride && (
+          <View style={[styles.workflowNote, { backgroundColor: "#F59E0B15", borderColor: "#FDE68A" }]}>
+            <Ionicons name="shield-checkmark" size={14} color="#D97706" />
+            <Text style={[styles.workflowNoteText, { color: "#D97706" }]}>
+              {loan.status === "approved" ? t("approved_directly") : t("rejected_directly")}
             </Text>
           </View>
         )}
@@ -248,7 +258,7 @@ export default function LoanDetailScreen() {
             <View style={styles.approvalCardHeader}>
               <Ionicons name="shield" size={18} color={Colors.light.primary} />
               <Text style={[styles.approvalCardTitle, { color: Colors.light.primary }]}>
-                {t("auto.president_s_final_decision")}
+                {loan.status === "pending_treasurer" ? t("president_override_decision") : t("auto.president_s_final_decision")}
               </Text>
             </View>
             <Text style={styles.fieldLabel}>{t("resolutionNo")} *</Text>
@@ -267,11 +277,15 @@ export default function LoanDetailScreen() {
             <View style={styles.approvalButtons}>
               <Pressable style={[styles.approveBtn, { backgroundColor: Colors.light.primary }]} onPress={handleApprove}>
                 <Ionicons name="checkmark" size={18} color="#fff" />
-                <Text style={styles.approveBtnText}>{t("approve")}</Text>
+                <Text style={styles.approveBtnText}>
+                  {loan.status === "pending_treasurer" ? t("direct_approve") : t("approve")}
+                </Text>
               </Pressable>
               <Pressable style={styles.rejectBtn} onPress={() => setDialog("rejectPresident")}>
                 <Ionicons name="close" size={18} color={Colors.light.danger} />
-                <Text style={styles.rejectBtnText}>{t("reject")}</Text>
+                <Text style={styles.rejectBtnText}>
+                  {loan.status === "pending_treasurer" ? t("direct_reject") : t("reject")}
+                </Text>
               </Pressable>
             </View>
           </View>

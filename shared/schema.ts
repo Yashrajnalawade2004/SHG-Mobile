@@ -111,6 +111,9 @@ export const payments = pgTable("payments", {
   rejectionReason: text("rejection_reason"),
   rejectedBy: varchar("rejected_by", { length: 36 }),
   rejectedAt: timestamp("rejected_at"),
+  overriddenBy: varchar("overridden_by", { length: 36 }),
+  overrideReason: text("override_reason"),
+  overrideAt: timestamp("override_at"),
 }, (t) => ({
   paymentGroupMemberMonthIdx: index("payment_group_member_month_idx").on(t.groupId, t.memberId, t.month),
 }));
@@ -137,6 +140,9 @@ export const loans = pgTable("loans", {
   rejectionReason: text("rejection_reason"),
   rejectedBy: varchar("rejected_by", { length: 36 }),
   rejectedAt: timestamp("rejected_at"),
+  presidentOverride: boolean("president_override").default(false),
+  overrideReason: text("override_reason"),
+  overrideAt: timestamp("override_at"),
 }, (t) => ({
   loanMemberIdx: index("loan_member_idx").on(t.memberId),
 }));

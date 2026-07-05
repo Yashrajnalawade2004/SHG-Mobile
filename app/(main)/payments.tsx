@@ -42,21 +42,32 @@ function ModeBadge({ mode }: { mode: "cash" | "online" }) {
 }
 
 function PaymentItem({
-  payment, canVerifyCash, canVerifyOnline, canDelete, onVerify, onReject, onDelete,
+  payment, isPresident, canVerifyCash, canVerifyOnline, canDelete, onVerify, onReject, onReopen, onDelete,
 }: {
   payment: Payment;
+  isPresident: boolean;
   canVerifyCash: boolean;
   canVerifyOnline: boolean;
   canDelete: boolean;
   onVerify: (id: string, status: PaymentStatus) => void;
   onReject: (id: string, status: PaymentStatus) => void;
+  onReopen: (id: string) => void;
   onDelete: (id: string) => void;
 }) {
   const { t, language } = useLanguage();
   const statusColor = paymentStatusColor(payment.status);
-  const canAct =
+  
+  // Normal verification access
+  const canVerifyNormally =
     (payment.mode === "cash" && canVerifyCash && payment.status === "pending") ||
     (payment.mode === "online" && canVerifyOnline && payment.status === "pending_verification");
+
+  // President override access: can verify/reject even if already confirmed/rejected
+  const canOverride =
+    isPresident && (payment.status === "confirmed" || payment.status === "rejected" || payment.status === "payment_not_received");
+
+  const canAct = canVerifyNormally || canOverride;
+  const isRejected = payment.status === "rejected" || payment.status === "payment_not_received";
 
   return (
     <View style={[styles.paymentCard, payment.mode === "online" && styles.onlineCard]}>
@@ -76,7 +87,7 @@ function PaymentItem({
           </Text>
         </View>
       </View>
-      {(payment.status === "rejected" || payment.status === "payment_not_received") && payment.rejectionReason && (
+      {isRejected && payment.rejectionReason && (
         <View style={styles.rejectionBox}>
           <Text style={styles.rejectionLabel}>{t("rejection_reason")}:</Text>
           <Text style={styles.rejectionText}>{payment.rejectionReason}</Text>
@@ -87,7 +98,7 @@ function PaymentItem({
           )}
         </View>
       )}
-      {(payment.status === "rejected" || payment.status === "payment_not_received") && !payment.rejectionReason && (
+      {isRejected && !payment.rejectionReason && (
         <View style={styles.rejectionBox}>
           <Text style={styles.rejectionText}>{t("no_remarks_provided")}</Text>
           {payment.rejectedAt && (
@@ -97,6 +108,33 @@ function PaymentItem({
           )}
         </View>
       )}
+
+      {/* Override Badge */}
+      {payment.overriddenBy && (
+        <View style={[styles.rejectionBox, { backgroundColor: "#F59E0B15", borderColor: "#FDE68A" }]}>
+          <Text style={[styles.rejectionLabel, { color: "#D97706" }]}>
+            {payment.status === "pending" ? t("payment_reopened") : t("overridden_by_president")}
+          </Text>
+          {payment.overrideReason && <Text style={[styles.rejectionText, { color: "#92400E" }]}>{payment.overrideReason}</Text>}
+          {payment.overrideAt && (
+            <Text style={[styles.rejectionMeta, { color: "#92400E" }]}>
+              {new Date(payment.overrideAt).toLocaleDateString()}
+            </Text>
+          )}
+        </View>
+      )}
+
+      {/* Reopen Action for President */}
+      {isPresident && isRejected && (
+        <Pressable
+          style={[styles.actionBtn, { backgroundColor: Colors.light.primary + "15", marginHorizontal: 16, marginBottom: canAct ? 0 : 16, marginTop: 8 }]}
+          onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onReopen(payment.id); }}
+        >
+          <Ionicons name="refresh-circle" size={18} color={Colors.light.primary} />
+          <Text style={[styles.actionText, { color: Colors.light.primary }]}>{t("reopen_payment")}</Text>
+        </Pressable>
+      )}
+
       {canAct && (
         <View style={styles.actionRow}>
           {payment.mode === "cash" ? (
@@ -153,7 +191,7 @@ export default function PaymentsScreen() {
   const insets = useSafeAreaInsets();
   const { isPresident, isTreasurer, group } = useAuth();
   const { t, language } = useLanguage();
-  const { payments, declarePayment, verifyPayment, deletePayment, refreshData } = useData();
+  const { payments, declarePayment, verifyPayment, reopenPayment, deletePayment, refreshData } = useData();
   const [deletePaymentId, setDeletePaymentId] = useState<string | null>(null);
 
   // Filters State
@@ -237,6 +275,11 @@ export default function PaymentsScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     await verifyPayment(rejectDialog.id, rejectDialog.status, rejectReason.trim() || undefined);
     setRejectDialog(null);
+  };
+
+  const handleReopen = async (id: string) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+    await reopenPayment(id);
   };
 
   const handleConfirmDelete = async () => {
@@ -471,11 +514,13 @@ export default function PaymentsScreen() {
         renderItem={({ item }) => (
           <PaymentItem
             payment={item}
+            isPresident={isPresident}
             canVerifyCash={canVerifyCash}
             canVerifyOnline={canVerifyOnline}
             canDelete={isPresident}
             onVerify={handleVerify}
             onReject={handleRejectPrompt}
+            onReopen={handleReopen}
             onDelete={setDeletePaymentId}
           />
         )}

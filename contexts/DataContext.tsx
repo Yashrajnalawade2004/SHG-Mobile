@@ -36,6 +36,9 @@ export interface Payment {
   rejectionReason?: string;
   rejectedBy?: string;
   rejectedAt?: string;
+  overriddenBy?: string;
+  overrideReason?: string;
+  overrideAt?: string;
 }
 
 export type LoanStatus =
@@ -65,6 +68,9 @@ export interface Loan {
   rejectionReason?: string;
   rejectedBy?: string;
   rejectedAt?: string;
+  presidentOverride?: boolean;
+  overrideReason?: string;
+  overrideAt?: string;
 }
 
 export interface LoanRepayment {
@@ -152,6 +158,7 @@ interface DataContextValue {
   deleteMeeting: (id: string) => Promise<void>;
   declarePayment: (amount: number, mode: PaymentMode) => Promise<void>;
   verifyPayment: (id: string, status: PaymentStatus, reason?: string) => Promise<void>;
+  reopenPayment: (id: string) => Promise<void>;
   deletePayment: (id: string) => Promise<void>;
   uploadQrCode: (qrCode: string | null) => Promise<void>;
   requestLoan: (data: { amount: number; duration: number }) => Promise<string | null>;
@@ -266,6 +273,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
     setPayments((prev) => prev.map((p) => (p.id === id ? updated : p)));
   }, []);
 
+  const reopenPayment = useCallback(async (id: string) => {
+    const updated = await apiPatch<Payment>(`/api/payments/${id}/reopen`, {});
+    setPayments((prev) => prev.map((p) => (p.id === id ? updated : p)));
+  }, []);
+
   const uploadQrCode = useCallback(async (qrCode: string | null) => {
     if (!user?.groupId) return;
     await apiPut(`/api/groups/${user.groupId}/qr-code`, { qrCode });
@@ -343,7 +355,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     () => ({
       meetings, payments, loans, loanRepayments, groupMembers, groupRules, groupSettings, groupSummary,
       createMeeting, updateMeeting, cancelMeeting, deleteMeeting,
-      declarePayment, verifyPayment, deletePayment, uploadQrCode,
+      declarePayment, verifyPayment, reopenPayment, deletePayment, uploadQrCode,
       requestLoan, treasurerApproveLoan, treasurerRejectLoan, approveLoan, rejectLoan, deleteLoan,
       addRepayment, deleteRepayment,
       assignTreasurer,
@@ -351,7 +363,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     }),
     [meetings, payments, loans, loanRepayments, groupMembers, groupRules, groupSettings,
       createMeeting, updateMeeting, cancelMeeting, deleteMeeting,
-      declarePayment, verifyPayment, deletePayment, uploadQrCode,
+      declarePayment, verifyPayment, reopenPayment, deletePayment, uploadQrCode,
       requestLoan, treasurerApproveLoan, treasurerRejectLoan, approveLoan, rejectLoan, deleteLoan,
       addRepayment, deleteRepayment,
       assignTreasurer,

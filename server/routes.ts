@@ -381,23 +381,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
   );
 
   app.post(
-    "/api/groups/:groupId/meetings",
+    "/api/meetings",
     requireAuth as any,
     requirePresidentOrTreasurer as any,
     async (req: AuthRequest, res) => {
-      const { groupId } = req.params;
+      const { scheduledDate, agenda, groupId } = req.body;
       if (req.currentUser!.groupId !== groupId)
         return res.status(403).json({ error: "Access denied" });
-      const { scheduledDate, agenda, notes } = req.body;
-      if (!scheduledDate)
-        return res.status(400).json({ error: "scheduledDate required" });
       const meeting = await storage.createMeeting({
         groupId,
         scheduledDate: new Date(scheduledDate),
-        agenda: agenda || "",
-        notes: notes || "",
-        status: "scheduled",
+        agenda,
         createdBy: req.currentUser!.id,
+        notes: "",
+        status: "scheduled",
         createdAt: new Date(),
       });
       return res.status(201).json(meeting);
@@ -407,7 +404,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.delete(
     "/api/meetings/:meetingId",
     requireAuth as any,
-    requirePresidentOrTreasurer as any,
+    requirePresident as any,
     async (req: AuthRequest, res) => {
       const { meetingId } = req.params;
       const meeting = await storage.getMeetingById(meetingId);
@@ -438,7 +435,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       ];
       const updates: any = {};
       for (const key of allowed) {
-        if (req.body[key] !== undefined) updates[key] = req.body[key];
+        if (req.body[key] !== undefined) {
+          // Treasurer cannot edit core meeting details
+          if (req.currentUser!.role === "treasurer" && ["scheduledDate", "agenda", "status"].includes(key)) {
+             return res.status(403).json({ error: "Treasurer cannot edit meeting details" });
+          }
+          updates[key] = req.body[key];
+        }
       }
       const updated = await storage.updateMeeting(meetingId, updates);
       return res.json(updated);
@@ -504,40 +507,49 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (payment.groupId !== user.groupId)
         return res.status(403).json({ error: "Access denied" });
 
-      if (payment.mode === "online") {
-        if (user.role !== "treasurer" && user.role !== "president") {
-          return res
-            .status(403)
-            .json({ error: "Treasurer or President access required" });
-        }
-        if (!["confirmed", "payment_not_received"].includes(status)) {
-          return res
-            .status(400)
-            .json({ error: "Invalid status for online payment" });
+      const isOverride = payment.status === "confirmed" || payment.status === "rejected" || payment.status === "payment_not_received";
+
+      if (isOverride) {
+        // Only President can override an already finalized payment
+        if (user.role !== "president") {
+          return res.status(403).json({ error: "Only President can override a verified payment" });
         }
       } else {
-        if (user.role !== "president" && user.role !== "treasurer") {
-          return res
-            .status(403)
-            .json({ error: "President or Treasurer access required" });
-        }
-        if (!["confirmed", "rejected"].includes(status)) {
-          return res
-            .status(400)
-            .json({ error: "Invalid status for cash payment" });
+        // Normal verification flow (Treasurer or President)
+        if (payment.mode === "online") {
+          if (user.role !== "treasurer" && user.role !== "president") {
+            return res.status(403).json({ error: "Treasurer or President access required" });
+          }
+          if (!["confirmed", "payment_not_received"].includes(status)) {
+            return res.status(400).json({ error: "Invalid status for online payment" });
+          }
+        } else {
+          if (user.role !== "president" && user.role !== "treasurer") {
+            return res.status(403).json({ error: "President or Treasurer access required" });
+          }
+          if (!["confirmed", "rejected"].includes(status)) {
+            return res.status(400).json({ error: "Invalid status for cash payment" });
+          }
         }
       }
 
       const updateData: any = {
         status,
-        verifiedBy: user.id,
-        verifiedAt: new Date(),
       };
-      
-      if (status === "rejected" || status === "payment_not_received") {
-        if (reason) updateData.rejectionReason = reason;
-        updateData.rejectedBy = user.id;
-        updateData.rejectedAt = new Date();
+
+      if (isOverride) {
+        updateData.overriddenBy = user.id;
+        updateData.overrideAt = new Date();
+        if (reason) updateData.overrideReason = reason;
+      } else {
+        updateData.verifiedBy = user.id;
+        updateData.verifiedAt = new Date();
+        
+        if (status === "rejected" || status === "payment_not_received") {
+          if (reason) updateData.rejectionReason = reason;
+          updateData.rejectedBy = user.id;
+          updateData.rejectedAt = new Date();
+        }
       }
 
       // If verifying, ensure amount is set correctly (expected + late fee)
@@ -546,6 +558,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const updated = await storage.updatePayment(paymentId, updateData);
+      return res.json(updated);
+    },
+  );
+
+  app.patch(
+    "/api/payments/:paymentId/reopen",
+    requireAuth as any,
+    requirePresident as any,
+    async (req: AuthRequest, res) => {
+      const { paymentId } = req.params;
+      const user = req.currentUser!;
+      const payment = await storage.getPaymentById(paymentId);
+      if (!payment) return res.status(404).json({ error: "Payment not found" });
+      if (payment.groupId !== user.groupId)
+        return res.status(403).json({ error: "Access denied" });
+
+      if (payment.status !== "rejected" && payment.status !== "payment_not_received") {
+        return res.status(400).json({ error: "Only rejected payments can be reopened" });
+      }
+
+      const updated = await storage.updatePayment(paymentId, {
+        status: "pending",
+        verifiedBy: null,
+        verifiedAt: null,
+        rejectedBy: null,
+        rejectedAt: null,
+        rejectionReason: null,
+        overriddenBy: user.id,
+        overrideAt: new Date(),
+        overrideReason: "Payment reopened by President",
+      });
       return res.json(updated);
     },
   );
@@ -741,18 +784,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!loan || loan.groupId !== req.currentUser!.groupId) {
         return res.status(404).json({ error: "Loan not found" });
       }
-      if (loan.status !== "pending_president") {
+      if (loan.status !== "pending_president" && loan.status !== "pending_treasurer") {
         return res
           .status(400)
-          .json({ error: "Loan is not awaiting president approval" });
+          .json({ error: "Loan is not awaiting approval" });
       }
-      const updated = await storage.updateLoan(loanId, {
+
+      const isOverride = loan.status === "pending_treasurer";
+
+      const updateData: any = {
         status: "approved",
         resolutionNo: resolutionNo || "",
         meetingId,
         approvedBy: req.currentUser!.id,
         approvedAt: new Date(),
-      });
+      };
+
+      if (isOverride) {
+        updateData.presidentOverride = true;
+        updateData.overrideAt = new Date();
+        updateData.overrideReason = "Approved directly by President";
+      }
+
+      const updated = await storage.updateLoan(loanId, updateData);
       return res.json(updated);
     },
   );
@@ -768,19 +822,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!loan || loan.groupId !== req.currentUser!.groupId) {
         return res.status(404).json({ error: "Loan not found" });
       }
-      if (loan.status !== "pending_president") {
+      if (loan.status !== "pending_president" && loan.status !== "pending_treasurer") {
         return res
           .status(400)
-          .json({ error: "Loan is not awaiting president approval" });
+          .json({ error: "Loan is not awaiting approval" });
       }
+
+      const isOverride = loan.status === "pending_treasurer";
+
       const updateData: any = {
         status: "rejected",
         approvedBy: req.currentUser!.id,
         approvedAt: new Date(),
+        rejectedBy: req.currentUser!.id,
+        rejectedAt: new Date(),
       };
       if (reason) updateData.rejectionReason = reason;
-      updateData.rejectedBy = req.currentUser!.id;
-      updateData.rejectedAt = new Date();
+
+      if (isOverride) {
+        updateData.presidentOverride = true;
+        updateData.overrideAt = new Date();
+        updateData.overrideReason = "Rejected directly by President";
+      }
 
       const updated = await storage.updateLoan(loanId, updateData);
       return res.json(updated);
