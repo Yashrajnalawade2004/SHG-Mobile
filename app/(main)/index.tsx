@@ -6,7 +6,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useData } from "@/contexts/DataContext";
 import Colors from "@/constants/colors";
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { processVoiceCommand, isSpeechRecognitionSupported, classifyIntent, type NLPResult } from "@/lib/nlpHandler";
 import { ExpoSpeechRecognitionModule, useSpeechRecognitionEvent } from "expo-speech-recognition";
 
@@ -27,9 +27,9 @@ type MicState = "idle" | "listening" | "processing" | "result" | "error";
 
 export default function DashboardScreen() {
   const insets = useSafeAreaInsets();
-  const { user, group, isPresident } = useAuth();
+  const { user, group, isPresident, isTreasurer } = useAuth();
   const { t, language } = useLanguage();
-  const { meetings, payments, loans, groupMembers, refreshData, groupSummary } = useData();
+  const { meetings, payments, loans, groupMembers, refreshData, groupSummary, groupSettings } = useData();
   const [refreshing, setRefreshing] = useState(false);
 
   const [micState, setMicState] = useState<MicState>("idle");
@@ -202,6 +202,81 @@ export default function DashboardScreen() {
   const activeLoans = loans.filter((l) => l.status === "approved" && l.remainingBalance > 0);
   const activeMembers = groupMembers.filter((m) => m.status === "active");
 
+  // ── Contribution Reminder — full payment lifecycle (members only) ───────────
+  // State machine:
+  //   'pending'   → no payment for this month at all
+  //   'submitted' → payment exists but not yet verified (pending / pending_verification)
+  //   'rejected'  → payment was rejected or payment_not_received
+  //   null        → confirmed — hide the card completely
+  const contributionReminder = useMemo(() => {
+    if (isPresident || isTreasurer || !user) return null;
+    const now = new Date();
+    const currentMonth = now.getMonth();
+    const currentYear = now.getFullYear();
+
+    // Find all payments by this member for the current month
+    const thisMonthPayments = payments.filter(
+      (p) => p.memberId === user.id &&
+        new Date(p.date).getMonth() === currentMonth &&
+        new Date(p.date).getFullYear() === currentYear
+    );
+
+    // ---- State: confirmed — hide card ----
+    const confirmed = thisMonthPayments.find(
+      (p) => p.status === "confirmed"
+    );
+    if (confirmed) return null;
+
+    // ---- State: submitted — awaiting verification ----
+    const submitted = thisMonthPayments.find(
+      (p) => p.status === "pending" || p.status === "pending_verification"
+    );
+    if (submitted) {
+      return { state: "submitted" as const, payment: submitted };
+    }
+
+    // ---- State: rejected ----
+    const rejected = thisMonthPayments.find(
+      (p) => p.status === "rejected" || p.status === "payment_not_received"
+    );
+    if (rejected) {
+      return { state: "rejected" as const, payment: rejected };
+    }
+
+    // ---- State: pending — nothing submitted yet ----
+    const dueDay = groupSettings.contributionDueDay ?? 5;
+    const graceDays = groupSettings.gracePeriodDays ?? 5;
+    const monthlyAmount = groupSettings.monthlyContributionAmount ?? 0;
+    const lateFeeAmount = groupSettings.lateFeeAmount ?? 0;
+    const lateFeeType = groupSettings.lateFeeType ?? "fixed";
+
+    const dueDate = new Date(currentYear, currentMonth, dueDay);
+    const diffMs = dueDate.getTime() - now.getTime();
+    const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+    const isOverdue = diffDays < 0;
+    const overdueBy = isOverdue ? Math.abs(diffDays) : 0;
+    const withinGrace = isOverdue && overdueBy <= graceDays;
+
+    let applicableLateFee = 0;
+    if (isOverdue && !withinGrace && monthlyAmount > 0) {
+      applicableLateFee = lateFeeType === "percentage"
+        ? Math.round((monthlyAmount * lateFeeAmount) / 100)
+        : lateFeeAmount;
+    }
+
+    return {
+      state: "pending" as const,
+      dueDate,
+      diffDays,
+      isOverdue,
+      overdueBy,
+      withinGrace,
+      monthlyAmount,
+      applicableLateFee,
+      totalPayable: monthlyAmount + applicableLateFee,
+    };
+  }, [user, payments, groupSettings, isPresident, isTreasurer]);
+
   const formatDate = (dateStr: string) => {
     const d = new Date(dateStr);
     return d.toLocaleDateString("en-IN", { day: "numeric", month: "short" });
@@ -327,6 +402,180 @@ export default function DashboardScreen() {
           <StatCard icon="cash" label={t("activeLoans")} value={activeLoans.length} color={Colors.light.danger} onPress={() => router.push("/loans")} />
         </View>
 
+        {/* ── Contribution Reminder Card — full lifecycle ── */}
+        {contributionReminder !== null && (
+          <View style={{ marginBottom: 20 }}>
+
+            {/* ────── STATE: pending ────── */}
+            {contributionReminder.state === "pending" && (() => {
+              const r = contributionReminder;
+              const isHot = r.isOverdue && !r.withinGrace;
+              return (
+                <>
+                  <View style={[
+                    styles.reminderCard,
+                    isHot ? styles.reminderCardOverdue : styles.reminderCardPending,
+                    { marginBottom: 0 },
+                  ]}>
+                    <View style={styles.reminderHeader}>
+                      <View style={[styles.reminderIconWrap,
+                        { backgroundColor: isHot ? Colors.light.danger + "20" : "#F59E0B20" }]}>
+                        <Ionicons
+                          name={isHot ? "alert-circle" : "time"}
+                          size={20}
+                          color={isHot ? Colors.light.danger : "#D97706"}
+                        />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.reminderTitle, { color: isHot ? Colors.light.danger : "#92400E" }]}>
+                          {t("reminder.contribution_pending_title")}
+                        </Text>
+                        <Text style={styles.reminderSubtitle}>
+                          {r.isOverdue
+                            ? r.withinGrace
+                              ? t("reminder.within_grace")
+                              : `${t("reminder.overdue_by")} ${r.overdueBy} ${t("reminder.days")}`
+                            : `${r.diffDays} ${t("reminder.days_remaining")}`}
+                        </Text>
+                      </View>
+                    </View>
+
+                    <View style={styles.reminderDetails}>
+                      <View style={styles.reminderDetailRow}>
+                        <Text style={styles.reminderDetailLabel}>{t("reminder.contribution_amount")}</Text>
+                        <Text style={styles.reminderDetailValue}>Rs. {r.monthlyAmount.toLocaleString("en-IN")}</Text>
+                      </View>
+                      <View style={styles.reminderDetailRow}>
+                        <Text style={styles.reminderDetailLabel}>{t("reminder.due_date")}</Text>
+                        <Text style={styles.reminderDetailValue}>
+                          {r.dueDate.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
+                        </Text>
+                      </View>
+                      {r.applicableLateFee > 0 && (
+                        <View style={styles.reminderDetailRow}>
+                          <Text style={styles.reminderDetailLabel}>{t("reminder.late_fee_applicable")}</Text>
+                          <Text style={[styles.reminderDetailValue, { color: Colors.light.danger }]}>
+                            Rs. {r.applicableLateFee.toLocaleString("en-IN")}
+                          </Text>
+                        </View>
+                      )}
+                      {r.applicableLateFee === 0 && r.isOverdue && (
+                        <View style={styles.reminderDetailRow}>
+                          <Text style={styles.reminderDetailLabel}>{t("reminder.late_fee_applicable")}</Text>
+                          <Text style={[styles.reminderDetailValue, { color: Colors.light.success }]}>
+                            {t("reminder.no_late_fee")}
+                          </Text>
+                        </View>
+                      )}
+                      <View style={[styles.reminderDetailRow, styles.reminderTotalRow]}>
+                        <Text style={styles.reminderTotalLabel}>{t("reminder.total_payable")}</Text>
+                        <Text style={styles.reminderTotalValue}>Rs. {r.totalPayable.toLocaleString("en-IN")}</Text>
+                      </View>
+                    </View>
+
+                    <Pressable
+                      style={styles.reminderPayBtn}
+                      onPress={() => router.push("/(main)/payments")}
+                      accessibilityRole="button"
+                    >
+                      <Ionicons name="arrow-forward-circle" size={18} color="#fff" />
+                      <Text style={styles.reminderPayBtnText}>{t("reminder.pay_now")}</Text>
+                    </Pressable>
+                  </View>
+                </>
+              );
+            })()}
+
+            {/* ────── STATE: submitted ────── */}
+            {contributionReminder.state === "submitted" && (() => {
+              const p = contributionReminder.payment;
+              return (
+                <View style={[styles.reminderCard, styles.reminderCardSubmitted, { marginBottom: 0 }]}>
+                  <View style={styles.reminderHeader}>
+                    <View style={[styles.reminderIconWrap, { backgroundColor: Colors.light.primary + "18" }]}>
+                      <Ionicons name="hourglass-outline" size={20} color={Colors.light.primary} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.reminderTitle, { color: Colors.light.primary }]}>
+                        {t("reminder.submitted_title")}
+                      </Text>
+                      <Text style={styles.reminderSubtitle}>{t("reminder.submitted_subtitle")}</Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.reminderDetails}>
+                    <View style={styles.reminderDetailRow}>
+                      <Text style={styles.reminderDetailLabel}>{t("reminder.submitted_amount")}</Text>
+                      <Text style={styles.reminderDetailValue}>Rs. {p.amount.toLocaleString("en-IN")}</Text>
+                    </View>
+                    <View style={styles.reminderDetailRow}>
+                      <Text style={styles.reminderDetailLabel}>{t("reminder.submitted_on")}</Text>
+                      <Text style={styles.reminderDetailValue}>
+                        {new Date(p.date).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
+                      </Text>
+                    </View>
+                    <View style={styles.reminderDetailRow}>
+                      <Text style={styles.reminderDetailLabel}>{t("reminder.payment_method")}</Text>
+                      <Text style={styles.reminderDetailValue}>{t(p.mode)}</Text>
+                    </View>
+                  </View>
+
+                  <Pressable
+                    style={[styles.reminderPayBtn, { backgroundColor: Colors.light.primary }]}
+                    onPress={() => router.push("/(main)/payments")}
+                    accessibilityRole="button"
+                  >
+                    <Ionicons name="eye-outline" size={18} color="#fff" />
+                    <Text style={styles.reminderPayBtnText}>{t("reminder.view_payment")}</Text>
+                  </Pressable>
+                </View>
+              );
+            })()}
+
+            {/* ────── STATE: rejected ────── */}
+            {contributionReminder.state === "rejected" && (() => {
+              const p = contributionReminder.payment;
+              return (
+                <View style={[styles.reminderCard, styles.reminderCardOverdue, { marginBottom: 0 }]}>
+                  <View style={styles.reminderHeader}>
+                    <View style={[styles.reminderIconWrap, { backgroundColor: Colors.light.danger + "20" }]}>
+                      <Ionicons name="close-circle" size={20} color={Colors.light.danger} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.reminderTitle, { color: Colors.light.danger }]}>
+                        {t("reminder.rejected_title")}
+                      </Text>
+                      <Text style={styles.reminderSubtitle}>
+                        {new Date(p.date).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
+                      </Text>
+                    </View>
+                  </View>
+
+                  {/* Rejection reason */}
+                  <View style={styles.reminderRejectionBox}>
+                    <Text style={styles.reminderRejectionLabel}>{t("reminder.rejection_reason_label")}</Text>
+                    <Text style={styles.reminderRejectionText}>
+                      {p.rejectionReason?.trim() || t("reminder.no_reason_given")}
+                    </Text>
+                  </View>
+
+                  <Pressable
+                    style={[styles.reminderPayBtn, { backgroundColor: Colors.light.danger }]}
+                    onPress={() => router.push("/(main)/payments")}
+                    accessibilityRole="button"
+                  >
+                    <Ionicons name="refresh" size={18} color="#fff" />
+                    <Text style={styles.reminderPayBtnText}>{t("reminder.resubmit")}</Text>
+                  </Pressable>
+                </View>
+              );
+            })()}
+
+          </View>
+        )}
+
+
+
         {groupSummary && (
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
@@ -357,6 +606,7 @@ export default function DashboardScreen() {
             </View>
           </View>
         )}
+
 
         {upcomingMeetings.length > 0 && (
           <View style={styles.section}>
@@ -776,4 +1026,122 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.light.border,
     marginVertical: 4,
   },
+  // ── Reminder card styles ─────────────────────────────────────
+  reminderCard: {
+    marginBottom: 20,
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1.5,
+    gap: 12,
+    ...Platform.select({
+      web: { boxShadow: "0px 2px 8px rgba(0,0,0,0.08)" },
+      default: { shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 8, elevation: 3 },
+    }),
+  },
+  reminderCardPending: {
+    backgroundColor: "#FFFBEB",
+    borderColor: "#FDE68A",
+  },
+  reminderCardSubmitted: {
+    backgroundColor: "#EFF6FF",
+    borderColor: "#BFDBFE",
+  },
+  reminderCardOverdue: {
+    backgroundColor: "#FFF1F2",
+    borderColor: "#FECDD3",
+  },
+  reminderHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  reminderIconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  reminderTitle: {
+    fontFamily: "Poppins_700Bold",
+    fontSize: 14,
+    marginBottom: 2,
+  },
+  reminderSubtitle: {
+    fontFamily: "Poppins_400Regular",
+    fontSize: 12,
+    color: Colors.light.textSecondary,
+  },
+  reminderDetails: {
+    backgroundColor: "rgba(255,255,255,0.6)",
+    borderRadius: 10,
+    padding: 12,
+    gap: 8,
+  },
+  reminderDetailRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  reminderDetailLabel: {
+    fontFamily: "Poppins_400Regular",
+    fontSize: 13,
+    color: Colors.light.textSecondary,
+  },
+  reminderDetailValue: {
+    fontFamily: "Poppins_600SemiBold",
+    fontSize: 13,
+    color: Colors.light.text,
+  },
+  reminderTotalRow: {
+    borderTopWidth: 1,
+    borderTopColor: "rgba(0,0,0,0.08)",
+    paddingTop: 8,
+    marginTop: 4,
+  },
+  reminderTotalLabel: {
+    fontFamily: "Poppins_600SemiBold",
+    fontSize: 14,
+    color: Colors.light.text,
+  },
+  reminderTotalValue: {
+    fontFamily: "Poppins_700Bold",
+    fontSize: 16,
+    color: Colors.light.primary,
+  },
+  reminderPayBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    backgroundColor: Colors.light.primary,
+    borderRadius: 12,
+    paddingVertical: 12,
+  },
+  reminderPayBtnText: {
+    fontFamily: "Poppins_600SemiBold",
+    fontSize: 14,
+    color: "#fff",
+  },
+  reminderRejectionBox: {
+    backgroundColor: "rgba(239,68,68,0.08)",
+    borderRadius: 10,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: "rgba(239,68,68,0.15)",
+  },
+  reminderRejectionLabel: {
+    fontFamily: "Poppins_600SemiBold",
+    fontSize: 12,
+    color: Colors.light.danger,
+    marginBottom: 4,
+  },
+  reminderRejectionText: {
+    fontFamily: "Poppins_400Regular",
+    fontSize: 13,
+    color: Colors.light.text,
+    lineHeight: 20,
+  },
 });
+
+

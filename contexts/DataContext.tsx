@@ -33,6 +33,9 @@ export interface Payment {
   status: PaymentStatus;
   verifiedBy?: string;
   verifiedAt?: string;
+  rejectionReason?: string;
+  rejectedBy?: string;
+  rejectedAt?: string;
 }
 
 export type LoanStatus =
@@ -59,6 +62,9 @@ export interface Loan {
   approvedAt?: string;
   meetingId?: string;
   createdAt: string;
+  rejectionReason?: string;
+  rejectedBy?: string;
+  rejectedAt?: string;
 }
 
 export interface LoanRepayment {
@@ -79,6 +85,12 @@ export interface GroupSettings {
   interestRate: number;
   maxLoanAmount: number;
   durationRules: DurationRule[];
+  // Contribution settings
+  monthlyContributionAmount?: number;
+  contributionDueDay?: number;
+  gracePeriodDays?: number;
+  lateFeeAmount?: number;
+  lateFeeType?: "fixed" | "percentage";
 }
 
 export const DEFAULT_SETTINGS: GroupSettings = {
@@ -89,7 +101,13 @@ export const DEFAULT_SETTINGS: GroupSettings = {
     { maxAmount: 20000, minDuration: 3, maxDuration: 12 },
     { maxAmount: 50000, minDuration: 6, maxDuration: 24 },
   ],
+  monthlyContributionAmount: 100,
+  contributionDueDay: 5,
+  gracePeriodDays: 5,
+  lateFeeAmount: 10,
+  lateFeeType: "fixed",
 };
+
 
 export function getDurationRuleForAmount(amount: number, rules: DurationRule[]): DurationRule {
   const sorted = [...rules].sort((a, b) => a.maxAmount - b.maxAmount);
@@ -133,14 +151,14 @@ interface DataContextValue {
   cancelMeeting: (id: string) => Promise<void>;
   deleteMeeting: (id: string) => Promise<void>;
   declarePayment: (amount: number, mode: PaymentMode) => Promise<void>;
-  verifyPayment: (id: string, status: PaymentStatus) => Promise<void>;
+  verifyPayment: (id: string, status: PaymentStatus, reason?: string) => Promise<void>;
   deletePayment: (id: string) => Promise<void>;
   uploadQrCode: (qrCode: string | null) => Promise<void>;
   requestLoan: (data: { amount: number; duration: number }) => Promise<string | null>;
   treasurerApproveLoan: (id: string) => Promise<void>;
-  treasurerRejectLoan: (id: string) => Promise<void>;
+  treasurerRejectLoan: (id: string, reason?: string) => Promise<void>;
   approveLoan: (id: string, resolutionNo: string, meetingId?: string) => Promise<void>;
-  rejectLoan: (id: string) => Promise<void>;
+  rejectLoan: (id: string, reason?: string) => Promise<void>;
   deleteLoan: (id: string) => Promise<void>;
   addRepayment: (loanId: string, amount: number) => Promise<void>;
   deleteRepayment: (repaymentId: string, loanId: string) => Promise<void>;
@@ -243,8 +261,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
     setPayments((prev) => [...prev, payment]);
   }, [user?.groupId]);
 
-  const verifyPayment = useCallback(async (id: string, status: PaymentStatus) => {
-    const updated = await apiPatch<Payment>(`/api/payments/${id}`, { status });
+  const verifyPayment = useCallback(async (id: string, status: PaymentStatus, reason?: string) => {
+    const updated = await apiPatch<Payment>(`/api/payments/${id}`, { status, reason });
     setPayments((prev) => prev.map((p) => (p.id === id ? updated : p)));
   }, []);
 
@@ -269,8 +287,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
     setLoans((prev) => prev.map((l) => (l.id === id ? updated : l)));
   }, []);
 
-  const treasurerRejectLoan = useCallback(async (id: string) => {
-    const updated = await apiPatch<Loan>(`/api/loans/${id}/treasurer-reject`, {});
+  const treasurerRejectLoan = useCallback(async (id: string, reason?: string) => {
+    const updated = await apiPatch<Loan>(`/api/loans/${id}/treasurer-reject`, { reason });
     setLoans((prev) => prev.map((l) => (l.id === id ? updated : l)));
   }, []);
 
@@ -279,8 +297,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
     setLoans((prev) => prev.map((l) => (l.id === id ? updated : l)));
   }, []);
 
-  const rejectLoan = useCallback(async (id: string) => {
-    const updated = await apiPatch<Loan>(`/api/loans/${id}/reject`, {});
+  const rejectLoan = useCallback(async (id: string, reason?: string) => {
+    const updated = await apiPatch<Loan>(`/api/loans/${id}/reject`, { reason });
     setLoans((prev) => prev.map((l) => (l.id === id ? updated : l)));
   }, []);
 

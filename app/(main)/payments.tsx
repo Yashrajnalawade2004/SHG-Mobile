@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
 import {
   View, Text, StyleSheet, FlatList, Pressable, Platform,
   TextInput, Alert, RefreshControl, Modal, Image, ScrollView,
@@ -11,6 +11,7 @@ import { useLanguage } from "@/contexts/LanguageContext";
 import { useData, Payment, PaymentStatus } from "@/contexts/DataContext";
 import Colors from "@/constants/colors";
 import ConfirmDialog from "@/components/ConfirmDialog";
+import FilterPicker, { FilterOption } from "@/components/FilterPicker";
 
 function paymentStatusColor(status: PaymentStatus): string {
   switch (status) {
@@ -41,13 +42,14 @@ function ModeBadge({ mode }: { mode: "cash" | "online" }) {
 }
 
 function PaymentItem({
-  payment, canVerifyCash, canVerifyOnline, canDelete, onVerify, onDelete,
+  payment, canVerifyCash, canVerifyOnline, canDelete, onVerify, onReject, onDelete,
 }: {
   payment: Payment;
   canVerifyCash: boolean;
   canVerifyOnline: boolean;
   canDelete: boolean;
   onVerify: (id: string, status: PaymentStatus) => void;
+  onReject: (id: string, status: PaymentStatus) => void;
   onDelete: (id: string) => void;
 }) {
   const { t, language } = useLanguage();
@@ -74,6 +76,27 @@ function PaymentItem({
           </Text>
         </View>
       </View>
+      {(payment.status === "rejected" || payment.status === "payment_not_received") && payment.rejectionReason && (
+        <View style={styles.rejectionBox}>
+          <Text style={styles.rejectionLabel}>{t("rejection_reason")}:</Text>
+          <Text style={styles.rejectionText}>{payment.rejectionReason}</Text>
+          {payment.rejectedAt && (
+            <Text style={styles.rejectionMeta}>
+              {t("rejected_on")} {new Date(payment.rejectedAt).toLocaleDateString()}
+            </Text>
+          )}
+        </View>
+      )}
+      {(payment.status === "rejected" || payment.status === "payment_not_received") && !payment.rejectionReason && (
+        <View style={styles.rejectionBox}>
+          <Text style={styles.rejectionText}>{t("no_remarks_provided")}</Text>
+          {payment.rejectedAt && (
+            <Text style={styles.rejectionMeta}>
+              {t("rejected_on")} {new Date(payment.rejectedAt).toLocaleDateString()}
+            </Text>
+          )}
+        </View>
+      )}
       {canAct && (
         <View style={styles.actionRow}>
           {payment.mode === "cash" ? (
@@ -87,7 +110,7 @@ function PaymentItem({
               </Pressable>
               <Pressable
                 style={[styles.actionBtn, { backgroundColor: Colors.light.danger + "15" }]}
-                onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onVerify(payment.id, "rejected"); }}
+                onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onReject(payment.id, "rejected"); }}
               >
                 <Ionicons name="close" size={18} color={Colors.light.danger} />
                 <Text style={[styles.actionText, { color: Colors.light.danger }]}>{t("reject")}</Text>
@@ -104,7 +127,7 @@ function PaymentItem({
               </Pressable>
               <Pressable
                 style={[styles.actionBtn, { backgroundColor: Colors.light.danger + "15" }]}
-                onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onVerify(payment.id, "payment_not_received"); }}
+                onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onReject(payment.id, "payment_not_received"); }}
               >
                 <Ionicons name="close-circle" size={18} color={Colors.light.danger} />
                 <Text style={[styles.actionText, { color: Colors.light.danger }]}>{t("paymentNotReceived")}</Text>
@@ -132,6 +155,18 @@ export default function PaymentsScreen() {
   const { t, language } = useLanguage();
   const { payments, declarePayment, verifyPayment, deletePayment, refreshData } = useData();
   const [deletePaymentId, setDeletePaymentId] = useState<string | null>(null);
+
+  // Filters State
+  const [filterMonth, setFilterMonth] = useState<string>("all");
+  const [filterYear, setFilterYear] = useState<string>("all");
+  const [filterStatus, setFilterStatus] = useState<string>("all");
+  const [filterMethod, setFilterMethod] = useState<string>("all");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [showFilters, setShowFilters] = useState(false);
+
+  // Rejection State
+  const [rejectDialog, setRejectDialog] = useState<{ id: string, status: PaymentStatus } | null>(null);
+  const [rejectReason, setRejectReason] = useState("");
 
   const [showInput, setShowInput] = useState(false);
   const [amount, setAmount] = useState("");
@@ -192,6 +227,18 @@ export default function PaymentsScreen() {
     await verifyPayment(id, status);
   };
 
+  const handleRejectPrompt = (id: string, status: PaymentStatus) => {
+    setRejectReason("");
+    setRejectDialog({ id, status });
+  };
+
+  const handleRejectSubmit = async () => {
+    if (!rejectDialog) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    await verifyPayment(rejectDialog.id, rejectDialog.status, rejectReason.trim() || undefined);
+    setRejectDialog(null);
+  };
+
   const handleConfirmDelete = async () => {
     if (!deletePaymentId) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
@@ -199,7 +246,43 @@ export default function PaymentsScreen() {
     setDeletePaymentId(null);
   };
 
-  const sortedPayments = [...payments].sort(
+  const filteredPayments = useMemo(() => {
+    return payments.filter(p => {
+      if (filterMethod !== "all" && p.mode !== filterMethod) return false;
+      
+      if (filterStatus !== "all") {
+        if (filterStatus === "pending") {
+           if (p.mode === "cash" && p.status !== "pending") return false;
+           if (p.mode === "online" && p.status !== "pending") return false;
+        } else if (filterStatus === "declared") {
+           if (p.status !== "pending_verification") return false;
+        } else if (filterStatus === "confirmed") {
+           if (p.status !== "confirmed") return false;
+        } else if (filterStatus === "rejected") {
+           if (p.status !== "rejected" && p.status !== "payment_not_received") return false;
+        }
+      }
+
+      if (filterMonth !== "all" || filterYear !== "all") {
+         const date = new Date(p.date);
+         if (filterMonth !== "all" && (date.getMonth() + 1).toString() !== filterMonth) return false;
+         if (filterYear !== "all" && date.getFullYear().toString() !== filterYear) return false;
+      }
+
+      if (searchQuery.trim() !== "") {
+         const q = searchQuery.toLowerCase();
+         if ((isPresident || isTreasurer) && p.memberName.toLowerCase().includes(q)) {
+            // matches
+         } else {
+            return false;
+         }
+      }
+
+      return true;
+    });
+  }, [payments, filterMethod, filterStatus, filterMonth, filterYear, searchQuery, isPresident, isTreasurer]);
+
+  const sortedPayments = [...filteredPayments].sort(
     (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
   );
 
@@ -221,18 +304,97 @@ export default function PaymentsScreen() {
             </Text>
           )}
         </View>
-        {canDeclare && (
+        <View style={{ flexDirection: "row", gap: 12 }}>
           <Pressable
-            style={styles.declareBtn}
+            style={[styles.declareBtn, { backgroundColor: showFilters ? Colors.light.primary : Colors.light.card, borderWidth: showFilters ? 0 : 1, borderColor: Colors.light.border }]}
             onPress={() => {
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-              if (showInput) { resetForm(); } else { setShowInput(true); }
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              setShowFilters(!showFilters);
             }}
           >
-            <Ionicons name={showInput ? "close" : "add"} size={22} color="#fff" />
+            <Ionicons name="filter" size={20} color={showFilters ? "#fff" : Colors.light.text} />
           </Pressable>
-        )}
+          {canDeclare && (
+            <Pressable
+              style={styles.declareBtn}
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                if (showInput) { resetForm(); } else { setShowInput(true); }
+              }}
+            >
+              <Ionicons name={showInput ? "close" : "add"} size={22} color="#fff" />
+            </Pressable>
+          )}
+        </View>
       </View>
+
+      {showFilters && (
+        <View style={styles.filtersContainer}>
+          {(isPresident || isTreasurer) && (
+            <TextInput
+              style={styles.searchInput}
+              placeholder={t("search") + "..."}
+              placeholderTextColor={Colors.light.textMuted}
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+            />
+          )}
+          <View style={styles.filterRow}>
+            <FilterPicker
+              label={t("payment_method")}
+              value={filterMethod}
+              onChange={setFilterMethod}
+              icon="card-outline"
+              options={[
+                { value: "all", label: t("payment_method") },
+                { value: "cash", label: t("cash") },
+                { value: "online", label: t("online") },
+              ]}
+            />
+            <FilterPicker
+              label={t("status")}
+              value={filterStatus}
+              onChange={setFilterStatus}
+              icon="ellipse-outline"
+              options={[
+                { value: "all", label: t("status") },
+                { value: "pending", label: t("pending") },
+                { value: "declared", label: t("declared") },
+                { value: "confirmed", label: t("confirmed") },
+                { value: "rejected", label: t("rejected") },
+              ]}
+            />
+            <FilterPicker
+              label={t("month")}
+              value={filterMonth}
+              onChange={setFilterMonth}
+              icon="calendar-outline"
+              options={[
+                { value: "all", label: t("month") },
+                { value: "1", label: "jan" }, { value: "2", label: "feb" },
+                { value: "3", label: "mar" }, { value: "4", label: "apr" },
+                { value: "5", label: "may" }, { value: "6", label: "jun" },
+                { value: "7", label: "jul" }, { value: "8", label: "aug" },
+                { value: "9", label: "sep" }, { value: "10", label: "oct" },
+                { value: "11", label: "nov" }, { value: "12", label: "dec" },
+              ]}
+            />
+            <FilterPicker
+              label={t("year")}
+              value={filterYear}
+              onChange={setFilterYear}
+              icon="time-outline"
+              options={[
+                { value: "all", label: t("year") },
+                ...Array.from({ length: 7 }, (_, i) => {
+                  const y = (new Date().getFullYear() - i).toString();
+                  return { value: y, label: y };
+                }),
+              ]}
+            />
+          </View>
+        </View>
+      )}
 
       {showInput && step === "amount" && (
         <View style={styles.inputBar}>
@@ -313,6 +475,7 @@ export default function PaymentsScreen() {
             canVerifyOnline={canVerifyOnline}
             canDelete={isPresident}
             onVerify={handleVerify}
+            onReject={handleRejectPrompt}
             onDelete={setDeletePaymentId}
           />
         )}
@@ -336,6 +499,31 @@ export default function PaymentsScreen() {
             <Text style={styles.qrModalClose}>{t("auto.tap_anywhere_to_close")}</Text>
           </View>
         </Pressable>
+      </Modal>
+
+      <Modal visible={rejectDialog !== null} transparent animationType="fade" onRequestClose={() => setRejectDialog(null)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>{t("reject")}</Text>
+            <Text style={styles.modalSubtitle}>{t("enter_remarks")}</Text>
+            <TextInput
+              style={styles.remarksInput}
+              placeholder={t("remarks") + "..."}
+              placeholderTextColor={Colors.light.textMuted}
+              value={rejectReason}
+              onChangeText={setRejectReason}
+              multiline
+            />
+            <View style={styles.modalActions}>
+              <Pressable style={styles.modalCancelBtn} onPress={() => setRejectDialog(null)}>
+                <Text style={styles.modalCancelText}>{t("cancel")}</Text>
+              </Pressable>
+              <Pressable style={styles.modalConfirmBtn} onPress={handleRejectSubmit}>
+                <Text style={styles.modalConfirmText}>{t("reject")}</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
       </Modal>
 
       <ConfirmDialog
@@ -469,6 +657,17 @@ const styles = StyleSheet.create({
     justifyContent: "center", gap: 6, paddingVertical: 10, borderRadius: 10,
   },
   actionText: { fontFamily: "Poppins_500Medium", fontSize: 12 },
+  rejectionBox: {
+    backgroundColor: Colors.light.danger + "10",
+    padding: 10,
+    borderRadius: 8,
+    marginTop: 8,
+    borderWidth: 1,
+    borderColor: Colors.light.danger + "20",
+  },
+  rejectionLabel: { fontFamily: "Poppins_600SemiBold", fontSize: 12, color: Colors.light.danger },
+  rejectionText: { fontFamily: "Poppins_400Regular", fontSize: 12, color: Colors.light.text, marginTop: 2 },
+  rejectionMeta: { fontFamily: "Poppins_400Regular", fontSize: 10, color: Colors.light.textMuted, marginTop: 4 },
   deletePaymentBtn: {
     flexDirection: "row",
     alignItems: "center",
@@ -485,7 +684,24 @@ const styles = StyleSheet.create({
     color: Colors.light.danger,
   },
   empty: { alignItems: "center", justifyContent: "center", paddingVertical: 80, gap: 12 },
-  emptyText: { fontFamily: "Poppins_500Medium", fontSize: 15, color: Colors.light.textMuted },
+  emptyText: {
+    fontFamily: "Poppins_500Medium",
+    fontSize: 15,
+    color: Colors.light.textMuted,
+  },
+  filtersContainer: { paddingHorizontal: 20, paddingBottom: 10, gap: 10 },
+  filterRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  searchInput: { backgroundColor: Colors.light.card, borderWidth: 1, borderColor: Colors.light.border, borderRadius: 10, padding: 10, fontFamily: "Poppins_400Regular", fontSize: 14, color: Colors.light.text },
+  modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "center", alignItems: "center", padding: 20 },
+  modalContent: { backgroundColor: Colors.light.background, borderRadius: 16, padding: 24, width: "100%", maxWidth: 400 },
+  modalTitle: { fontFamily: "Poppins_700Bold", fontSize: 20, color: Colors.light.text, marginBottom: 8 },
+  modalSubtitle: { fontFamily: "Poppins_400Regular", fontSize: 14, color: Colors.light.textSecondary, marginBottom: 16 },
+  remarksInput: { backgroundColor: Colors.light.card, borderWidth: 1, borderColor: Colors.light.border, borderRadius: 10, padding: 12, fontFamily: "Poppins_400Regular", fontSize: 14, color: Colors.light.text, minHeight: 80, textAlignVertical: "top" },
+  modalActions: { flexDirection: "row", justifyContent: "flex-end", gap: 12, marginTop: 24 },
+  modalCancelBtn: { paddingHorizontal: 16, paddingVertical: 10 },
+  modalCancelText: { fontFamily: "Poppins_500Medium", fontSize: 15, color: Colors.light.textSecondary },
+  modalConfirmBtn: { paddingHorizontal: 20, paddingVertical: 10, backgroundColor: Colors.light.danger, borderRadius: 10 },
+  modalConfirmText: { fontFamily: "Poppins_600SemiBold", fontSize: 15, color: "#fff" },
   qrModalOverlay: {
     flex: 1, backgroundColor: "rgba(0,0,0,0.85)",
     justifyContent: "center", alignItems: "center",

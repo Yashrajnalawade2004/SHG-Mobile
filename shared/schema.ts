@@ -108,6 +108,9 @@ export const payments = pgTable("payments", {
   status: varchar("status", { length: 30 }).notNull().default("pending"),
   verifiedBy: varchar("verified_by", { length: 36 }),
   verifiedAt: timestamp("verified_at"),
+  rejectionReason: text("rejection_reason"),
+  rejectedBy: varchar("rejected_by", { length: 36 }),
+  rejectedAt: timestamp("rejected_at"),
 }, (t) => ({
   paymentGroupMemberMonthIdx: index("payment_group_member_month_idx").on(t.groupId, t.memberId, t.month),
 }));
@@ -131,6 +134,9 @@ export const loans = pgTable("loans", {
   approvedAt: timestamp("approved_at"),
   meetingId: varchar("meeting_id", { length: 36 }),
   createdAt: timestamp("created_at").notNull().default(sql`now()`),
+  rejectionReason: text("rejection_reason"),
+  rejectedBy: varchar("rejected_by", { length: 36 }),
+  rejectedAt: timestamp("rejected_at"),
 }, (t) => ({
   loanMemberIdx: index("loan_member_idx").on(t.memberId),
 }));

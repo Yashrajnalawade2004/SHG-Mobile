@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useMemo, ReactNode, useCallback, useEffect } from "react";
+﻿import { createContext, useContext, useState, useMemo, ReactNode, useCallback, useEffect } from "react";
 import { getItem, setItem, getItemSync } from "@/lib/storage";
 import { apiPatch, getToken } from "@/lib/api";
 
@@ -6,6 +6,31 @@ export type Language = "en" | "mr";
 
 export const translations: Record<string, any> = {
   "common": {
+    "search": { "en": "Search", "mr": "शोधा" },
+    "filters": { "en": "Filters", "mr": "फिल्टर्स" },
+    "month": { "en": "Month", "mr": "महिना" },
+    "year": { "en": "Year", "mr": "वर्ष" },
+    "payment_method": { "en": "Payment Method", "mr": "पेमेंट पद्धत" },
+    "all": { "en": "All", "mr": "सर्व" },
+    "cash": { "en": "Cash", "mr": "रोख" },
+    "online": { "en": "Online", "mr": "ऑनलाइन" },
+    "pending": { "en": "Pending", "mr": "प्रलंबित" },
+    "declared": { "en": "Declared", "mr": "घोषित" },
+    "confirmed": { "en": "Confirmed", "mr": "निश्चित" },
+    "rejected": { "en": "Rejected", "mr": "नाकारले" },
+    "remarks": { "en": "Remarks", "mr": "शेरा" },
+    "enter_remarks": { "en": "Enter Remarks (Optional)", "mr": "शेरा प्रविष्ट करा (पर्यायी)" },
+    "no_remarks_provided": { "en": "No remarks provided.", "mr": "कोणताही शेरा दिला नाही." },
+    "rejected_by": { "en": "Rejected By", "mr": "द्वारे नाकारले" },
+    "rejected_on": { "en": "Rejected On", "mr": "रोजी नाकारले" },
+    "active_status": { "en": "Active", "mr": "सक्रिय" },
+    "completed": { "en": "Completed", "mr": "पूर्ण झाले" },
+    "pending_treasurer": { "en": "Pending Treasurer", "mr": "खजिनदार प्रलंबित" },
+    "pending_president": { "en": "Pending President", "mr": "अध्यक्ष प्रलंबित" },
+    "treasurer_approved": { "en": "Treasurer Approved", "mr": "खजिनदार मंजूर" },
+    "president_approved": { "en": "President Approved", "mr": "अध्यक्ष मंजूर" },
+    "rejection_reason": { "en": "Rejection Reason", "mr": "नाकारण्याचे कारण" },
+    "reject": { "en": "Reject", "mr": "नाकार" },
     "appname": {
       "en": "SHG Records",
       "mr": "बचत गट नोंदी"
@@ -902,6 +927,32 @@ export const translations: Record<string, any> = {
       "en": "Total Savings",
       "mr": "एकूण बचत"
     },
+    
+    "time_range": { "en": "Time Range", "mr": "वेळ श्रेणी" },
+    "custom_date_range": { "en": "Custom Date Range", "mr": "सानुकूल तारीख" },
+    "start_date": { "en": "Start Date", "mr": "प्रारंभ तारीख" },
+    "end_date": { "en": "End Date", "mr": "शेवटची तारीख" },
+    "payment_method": { "en": "Payment Method", "mr": "पेमेंट पद्धत" },
+    "loan_status": { "en": "Loan Status", "mr": "कर्ज स्थिती" },
+    "member_status": { "en": "Member Status", "mr": "सदस्य स्थिती" },
+    "treasurer_approved": { "en": "Treasurer Approved", "mr": "खजिनदार मंजूर" },
+    "president_approved": { "en": "President Approved", "mr": "अध्यक्ष मंजूर" },
+    "pending_loans": { "en": "Pending Loans", "mr": "प्रलंबित कर्ज" },
+    "rejected_loans": { "en": "Rejected Loans", "mr": "नाकारलेले कर्ज" },
+    "active_members": { "en": "Active Members", "mr": "सक्रिय सदस्य" },
+    "inactive_members": { "en": "Inactive Members", "mr": "निष्क्रिय सदस्य" },
+    "members_active_loans": { "en": "Members with Active Loans", "mr": "सक्रिय कर्ज असलेले सदस्य" },
+    "members_completed_loans": { "en": "Members with Completed Loans", "mr": "पूर्ण कर्ज असलेले सदस्य" },
+    "members_pending_payments": { "en": "Members with Pending Payments", "mr": "प्रलंबित पेमेंट असलेले सदस्य" },
+    "members_overdue_payments": { "en": "Members with Overdue Payments", "mr": "थकबाकी पेमेंट असलेले सदस्य" },
+    "filters": { "en": "Filters", "mr": "फिल्टर्स" },
+    "applied_filters": { "en": "Applied Filters", "mr": "लागू केलेले फिल्टर्स" },
+    "page": { "en": "Page", "mr": "पृष्ठ" },
+    "all_time": { "en": "All Time", "mr": "सर्व वेळ" },
+    "no_records_found": {
+      "en": "No records found for the selected filters.",
+      "mr": "निवडलेल्या फिल्टरसाठी कोणत्याही नोंदी आढळल्या नाहीत."
+    },
     "group_reports": {
       "en": "Group Reports",
       "mr": "गट अहवाल"
@@ -1135,6 +1186,29 @@ export const translations: Record<string, any> = {
     "group_reports": {
       "en": "Group Reports",
       "mr": "गट अहवाल"
+    },
+    "reminder": {
+      "contribution_pending_title": { "en": "monthly contribution pending", "mr": "मासिक योगदान प्रलंबित" },
+      "contribution_amount": { "en": "contribution amount", "mr": "योगदान रक्कम" },
+      "due_date": { "en": "due date", "mr": "देय तारीख" },
+      "days_remaining": { "en": "days remaining", "mr": "दिवस शिल्लक" },
+      "overdue_by": { "en": "overdue by", "mr": "उशीर झाला" },
+      "days": { "en": "days", "mr": "दिवस" },
+      "late_fee_applicable": { "en": "late fee", "mr": "विलंब शुल्क" },
+      "total_payable": { "en": "total payable", "mr": "एकूण देय" },
+      "pay_now": { "en": "pay now", "mr": "आता भरा" },
+      "no_late_fee": { "en": "no late fee", "mr": "विलंब शुल्क नाही" },
+      "within_grace": { "en": "within grace period", "mr": "सवलत कालावधीत" },
+      "submitted_title": { "en": "payment submitted", "mr": "पेमेंट सादर केले" },
+      "submitted_subtitle": { "en": "awaiting treasurer verification", "mr": "खजिनदार सत्यापनाची प्रतीक्षा" },
+      "view_payment": { "en": "view payment", "mr": "पेमेंट पहा" },
+      "submitted_amount": { "en": "amount submitted", "mr": "सादर केलेली रक्कम" },
+      "submitted_on": { "en": "submitted on", "mr": "रोजी सादर केले" },
+      "payment_method": { "en": "method", "mr": "पद्धत" },
+      "rejected_title": { "en": "payment rejected", "mr": "पेमेंट नाकारले" },
+      "rejection_reason_label": { "en": "reason", "mr": "कारण" },
+      "no_reason_given": { "en": "no reason provided", "mr": "कोणतेही कारण दिले नाही" },
+      "resubmit": { "en": "resubmit payment", "mr": "पुन्हा पेमेंट सादर करा" }
     },
     "english": {
       "en": "English / मराठी",
@@ -1431,6 +1505,28 @@ export const translations: Record<string, any> = {
     "overview_of_all_active_loans": {
       "en": "Overview of all active loans, interest, and outstanding balances.",
       "mr": "सर्व सक्रिय कर्जे, व्याज आणि बाकी रकमेचा आढावा."
+    },
+    "filters": {
+      "select_month": { "en": "select month", "mr": "महिना निवडा" },
+      "select_year": { "en": "select year", "mr": "वर्ष निवडा" },
+      "select_status": { "en": "select status", "mr": "स्थिती निवडा" },
+      "select_method": { "en": "select method", "mr": "पद्धत निवडा" },
+      "all_months": { "en": "all months", "mr": "सर्व महिने" },
+      "all_years": { "en": "all years", "mr": "सर्व वर्षे" },
+      "all_statuses": { "en": "all statuses", "mr": "सर्व स्थिती" },
+      "all_methods": { "en": "all methods", "mr": "सर्व पद्धती" },
+      "jan": { "en": "jan", "mr": "जाने" },
+      "feb": { "en": "feb", "mr": "फेब्रु" },
+      "mar": { "en": "mar", "mr": "मार्च" },
+      "apr": { "en": "apr", "mr": "एप्रिल" },
+      "may": { "en": "may", "mr": "मे" },
+      "jun": { "en": "jun", "mr": "जून" },
+      "jul": { "en": "jul", "mr": "जुलै" },
+      "aug": { "en": "aug", "mr": "ऑग" },
+      "sep": { "en": "sep", "mr": "सप्टे" },
+      "oct": { "en": "oct", "mr": "ऑक्टो" },
+      "nov": { "en": "nov", "mr": "नोव्हे" },
+      "dec": { "en": "dec", "mr": "डिसें" }
     }
   }
 };

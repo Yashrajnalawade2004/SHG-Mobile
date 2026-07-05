@@ -241,7 +241,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
         const currentMonthPayments = payments.filter(p => p.month === currentMonth);
         const expectedCollection = currentMonthPayments.reduce((sum, p) => sum + p.expectedAmount, 0);
-        const actualCollection = currentMonthPayments.reduce((sum, p) => sum + p.amount, 0);
+        const actualCollection = currentMonthPayments.filter(p => p.status === "confirmed").reduce((sum, p) => sum + p.amount, 0);
 
         return res.json({
           totalSavings,
@@ -497,7 +497,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     requireAuth as any,
     async (req: AuthRequest, res) => {
       const { paymentId } = req.params;
-      const { status } = req.body;
+      const { status, reason } = req.body;
       const user = req.currentUser!;
       const payment = await storage.getPaymentById(paymentId);
       if (!payment) return res.status(404).json({ error: "Payment not found" });
@@ -534,6 +534,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         verifiedAt: new Date(),
       };
       
+      if (status === "rejected" || status === "payment_not_received") {
+        if (reason) updateData.rejectionReason = reason;
+        updateData.rejectedBy = user.id;
+        updateData.rejectedAt = new Date();
+      }
+
       // If verifying, ensure amount is set correctly (expected + late fee)
       if (status === "confirmed" && payment.amount === 0) {
         updateData.amount = (payment.expectedAmount || 0) + (payment.lateFee || 0);
@@ -702,6 +708,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (user.role !== "treasurer")
         return res.status(403).json({ error: "Treasurer access required" });
       const { loanId } = req.params;
+      const { reason } = req.body;
       const loan = await storage.getLoanById(loanId);
       if (!loan || loan.groupId !== user.groupId)
         return res.status(404).json({ error: "Loan not found" });
@@ -709,11 +716,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res
           .status(400)
           .json({ error: "Loan is not awaiting treasurer approval" });
-      const updated = await storage.updateLoan(loanId, {
+      const updateData: any = {
         status: "treasurer_rejected",
         treasurerActionBy: user.id,
         treasurerActionAt: new Date(),
-      });
+      };
+      if (reason) updateData.rejectionReason = reason;
+      updateData.rejectedBy = user.id;
+      updateData.rejectedAt = new Date();
+
+      const updated = await storage.updateLoan(loanId, updateData);
       return res.json(updated);
     },
   );
@@ -751,6 +763,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     requirePresident as any,
     async (req: AuthRequest, res) => {
       const { loanId } = req.params;
+      const { reason } = req.body;
       const loan = await storage.getLoanById(loanId);
       if (!loan || loan.groupId !== req.currentUser!.groupId) {
         return res.status(404).json({ error: "Loan not found" });
@@ -760,11 +773,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .status(400)
           .json({ error: "Loan is not awaiting president approval" });
       }
-      const updated = await storage.updateLoan(loanId, {
+      const updateData: any = {
         status: "rejected",
         approvedBy: req.currentUser!.id,
         approvedAt: new Date(),
-      });
+      };
+      if (reason) updateData.rejectionReason = reason;
+      updateData.rejectedBy = req.currentUser!.id;
+      updateData.rejectedAt = new Date();
+
+      const updated = await storage.updateLoan(loanId, updateData);
       return res.json(updated);
     },
   );

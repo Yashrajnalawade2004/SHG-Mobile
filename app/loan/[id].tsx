@@ -1,7 +1,7 @@
 import { useState } from "react";
 import {
   View, Text, StyleSheet, ScrollView, Pressable, Platform,
-  TextInput,
+  TextInput, Modal,
 } from "react-native";
 import { useLocalSearchParams, router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -43,6 +43,7 @@ export default function LoanDetailScreen() {
   const [repayAmount, setRepayAmount] = useState("");
   const [showRepay, setShowRepay] = useState(false);
   const [dialog, setDialog] = useState<DialogType>(null);
+  const [rejectReason, setRejectReason] = useState("");
   const [deleteRepaymentId, setDeleteRepaymentId] = useState<string | null>(null);
   const [resolutionError, setResolutionError] = useState(false);
 
@@ -76,7 +77,8 @@ export default function LoanDetailScreen() {
   const handleTreasurerReject = async () => {
     setDialog(null);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-    await treasurerRejectLoan(loan.id);
+    await treasurerRejectLoan(loan.id, rejectReason.trim() || undefined);
+    setRejectReason("");
   };
 
   const handleApprove = async () => {
@@ -92,7 +94,8 @@ export default function LoanDetailScreen() {
   const handleReject = async () => {
     setDialog(null);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-    await rejectLoan(loan.id);
+    await rejectLoan(loan.id, rejectReason.trim() || undefined);
+    setRejectReason("");
   };
 
   const handleRepay = async () => {
@@ -193,6 +196,28 @@ export default function LoanDetailScreen() {
           {loan.resolutionNo ? <Text style={styles.infoRow}>{t("resolutionNo")} {loan.resolutionNo}</Text> : null}
           <Text style={styles.infoRow}>{t("date")}: {new Date(loan.createdAt).toLocaleDateString("en-IN")}</Text>
         </View>
+
+        {(loan.status === "rejected" || loan.status === "treasurer_rejected") && loan.rejectionReason && (
+          <View style={styles.rejectionBox}>
+            <Text style={styles.rejectionLabel}>{t("rejection_reason")}:</Text>
+            <Text style={styles.rejectionText}>{loan.rejectionReason}</Text>
+            {loan.rejectedAt && (
+              <Text style={styles.rejectionMeta}>
+                {t("rejected_on")} {new Date(loan.rejectedAt).toLocaleDateString("en-IN")}
+              </Text>
+            )}
+          </View>
+        )}
+        {(loan.status === "rejected" || loan.status === "treasurer_rejected") && !loan.rejectionReason && (
+          <View style={styles.rejectionBox}>
+            <Text style={styles.rejectionText}>{t("no_remarks_provided")}</Text>
+            {loan.rejectedAt && (
+              <Text style={styles.rejectionMeta}>
+                {t("rejected_on")} {new Date(loan.rejectedAt).toLocaleDateString("en-IN")}
+              </Text>
+            )}
+          </View>
+        )}
 
         {showTreasurerActions && (
           <View style={styles.approvalCard}>
@@ -334,27 +359,30 @@ export default function LoanDetailScreen() {
         onCancel={() => setDialog(null)}
       />
 
-      <ConfirmDialog
-        visible={dialog === "rejectTreasurer"}
-        title={t("auto.reject_loan_request")}
-        message={t("auto.the_member_will_be_notified")}
-        confirmText={t("reject")}
-        cancelText={t("cancel")}
-        destructive
-        onConfirm={handleTreasurerReject}
-        onCancel={() => setDialog(null)}
-      />
-
-      <ConfirmDialog
-        visible={dialog === "rejectPresident"}
-        title={t("auto.reject_this_loan")}
-        message={t("auto.the_member_will_be_notified_1")}
-        confirmText={t("reject")}
-        cancelText={t("cancel")}
-        destructive
-        onConfirm={handleReject}
-        onCancel={() => setDialog(null)}
-      />
+      <Modal visible={dialog === "rejectTreasurer" || dialog === "rejectPresident"} transparent animationType="fade" onRequestClose={() => setDialog(null)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>{t("reject")}</Text>
+            <Text style={styles.modalSubtitle}>{t("enter_remarks")}</Text>
+            <TextInput
+              style={styles.remarksInput}
+              placeholder={t("remarks") + "..."}
+              placeholderTextColor={Colors.light.textMuted}
+              value={rejectReason}
+              onChangeText={setRejectReason}
+              multiline
+            />
+            <View style={styles.modalActions}>
+              <Pressable style={styles.modalCancelBtn} onPress={() => setDialog(null)}>
+                <Text style={styles.modalCancelText}>{t("cancel")}</Text>
+              </Pressable>
+              <Pressable style={styles.modalConfirmBtn} onPress={dialog === "rejectTreasurer" ? handleTreasurerReject : handleReject}>
+                <Text style={styles.modalConfirmText}>{t("reject")}</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       <ConfirmDialog
         visible={deleteRepaymentId !== null}
@@ -687,4 +715,25 @@ const styles = StyleSheet.create({
     color: Colors.light.textMuted,
     marginTop: 12,
   },
+  modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "center", alignItems: "center", padding: 20 },
+  modalContent: { backgroundColor: Colors.light.background, borderRadius: 16, padding: 24, width: "100%", maxWidth: 400 },
+  modalTitle: { fontFamily: "Poppins_700Bold", fontSize: 20, color: Colors.light.text, marginBottom: 8 },
+  modalSubtitle: { fontFamily: "Poppins_400Regular", fontSize: 14, color: Colors.light.textSecondary, marginBottom: 16 },
+  remarksInput: { backgroundColor: Colors.light.card, borderWidth: 1, borderColor: Colors.light.border, borderRadius: 10, padding: 12, fontFamily: "Poppins_400Regular", fontSize: 14, color: Colors.light.text, minHeight: 80, textAlignVertical: "top" },
+  modalActions: { flexDirection: "row", justifyContent: "flex-end", gap: 12, marginTop: 24 },
+  modalCancelBtn: { paddingHorizontal: 16, paddingVertical: 10 },
+  modalCancelText: { fontFamily: "Poppins_500Medium", fontSize: 15, color: Colors.light.textSecondary },
+  modalConfirmBtn: { paddingHorizontal: 20, paddingVertical: 10, backgroundColor: Colors.light.danger, borderRadius: 10 },
+  modalConfirmText: { fontFamily: "Poppins_600SemiBold", fontSize: 15, color: "#fff" },
+  rejectionBox: {
+    backgroundColor: Colors.light.danger + "10",
+    padding: 10,
+    borderRadius: 8,
+    marginTop: 8,
+    borderWidth: 1,
+    borderColor: Colors.light.danger + "20",
+  },
+  rejectionLabel: { fontFamily: "Poppins_600SemiBold", fontSize: 12, color: Colors.light.danger },
+  rejectionText: { fontFamily: "Poppins_400Regular", fontSize: 12, color: Colors.light.text, marginTop: 2 },
+  rejectionMeta: { fontFamily: "Poppins_400Regular", fontSize: 10, color: Colors.light.textMuted, marginTop: 4 },
 });

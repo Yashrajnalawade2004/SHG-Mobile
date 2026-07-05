@@ -68,6 +68,8 @@ export default function MemberDetailScreen() {
       meetings,
       groupMembers,
       language,
+      t,
+      user,
     });
     setGenerating(false);
   };
