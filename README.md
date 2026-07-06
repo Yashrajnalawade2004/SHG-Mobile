@@ -21,6 +21,7 @@ A unique feature of this platform is the **AI Voice Assistant**, designed specif
 - **Member Registration**: Members join securely using the unique Group Code.
 - **Role Assignment**: The President can seamlessly promote members to the Treasurer role.
 - **Role-Based Access & Governance Hierarchy**: Explicit permission modeling reflecting real-world SHGs. The Super Admin manages platform deployment, the Treasurer handles day-to-day financial operations (verifying payments, recommending loans, recording attendance), and the President has ultimate platform authority with direct override capabilities (reopening payments, direct loan approvals, editing meetings).
+- **Bootstrapped SHG Configuration**: Built-in safeguards ensure automated cron jobs (like monthly contribution and late fee generation) only activate after the President has fully configured the SHG settings (including saving amounts and affiliated banks).
 - **Member Management**: Adding, suspending, and monitoring group members.
 - **Meeting Management**: Schedule meetings, track attendance, and record minutes.
 - **Monthly Contribution Management**: Core ledger tracking for expected monthly savings.
@@ -28,11 +29,12 @@ A unique feature of this platform is the **AI Voice Assistant**, designed specif
 - **Dashboard Reminders**: Multi-state dynamic reminders (Pending, Submitted, Rejected) for monthly contributions prominently displayed on the member dashboard.
 - **Automatic Monthly Payment Generation**: Monthly dues are created systematically.
 - **Late Fee Automation**: Programmable late fee structures (fixed or percentage) applied automatically on overdue payments.
-- **Loan Workflow**: End-to-end loan request, review, and approval lifecycle.
-- **Loan Repayment Tracking**: Tracking principal and interest repayments.
+- **Advanced Loan Workflow**: Members request standard loans. The President and Treasurer can convert these requests into Bank Assisted Loans during the approval phase by filling in bank details. The President retains ultimate override authority for final loan approvals.
+- **Bank Assisted Loans Integration**: Advanced loan structure allowing SHGs to augment internal funds with affiliated bank loans. Tracks separate Principal, Interest, Duration, and EMI for the "SHG Portion" and "Bank Portion".
+- **Accurate Repayment Tracking & Pass-throughs**: Distinctly tracks "SHG Income" versus "Bank Collections (Pass-through)" to ensure accurate ledger balancing. Dynamic cascading updates ensure that editing or deleting a repayment instantly recalculates outstanding balances across the entire dashboard.
 - **Financial Summary Dashboard**: Real-time calculation of Current Balance (Savings + Late Fees + Repayments - Loans).
-- **Comprehensive Reports**: Member Register, Savings Reports, Loan Reports, and Financial Summaries.
-- **PDF Generation**: Localized (Marathi & English) PDF statements exportable directly to the device.
+- **Comprehensive Reports**: Member Register, Savings Reports, Loan Reports, and Financial Summaries with dedicated splits for Active vs Completed loans.
+- **PDF Generation**: Fully localized (Marathi & English) PDF statements exportable directly to the device with zero hardcoded English bleeds.
 - **AI Voice Assistant**: Voice-activated, LLM-powered intent classification for app navigation.
 - **Localization**: Full Marathi & English support across the UI, PDFs, validation, and AI responses.
 - **QR Payment Support**: Upload and display group QR codes for digital contribution payments.
@@ -50,12 +52,12 @@ graph TD
     B -->|Provides Code| C[President registers using Group Code]
     B -->|Provides Code| E[Members join using Group Code]
     C -->|Promotes Member| F[President assigns Treasurer]
-    F --> G{Operational Workflows}
+    F -->|Configures Rules & Banks| G{Operational Workflows}
     E --> G
     G -->|Schedule & Record| H(Meetings)
     G -->|Declare & Verify| I(Payments)
-    G -->|Request & Approve| J(Loans)
-    G -->|Generate| K(Reports)
+    G -->|Request, Bank-Verify & Approve| J(Loans)
+    G -->|Generate Localized| K(Reports)
     G -->|Navigate| L(AI Assistant)
 ```
 
@@ -130,6 +132,7 @@ server/
   cron.ts                 Automated late fee & contribution generation
 shared/
   schema.ts               Drizzle schema (Single Source of Truth)
+  accounting.ts           Shared accounting & logic utilities
 ```
 
 ---
@@ -147,10 +150,10 @@ The platform features a native **Voice Assistant** to help users navigate comple
 
 ## 7. Reports
 
-The application provides extensive reporting capabilities exportable as fully localized PDFs.
+The application provides extensive reporting capabilities exportable as fully localized PDFs with robust language dictionary mapping.
 
 - **Savings Report**: Breakdown of member contributions, late fees, and totals.
-- **Loan Report**: Comprehensive list of active and completed loans with principal and interest breakdowns.
+- **Loan Report**: Comprehensive list of loans explicitly sectioned into **Active Loans** and **Completed Loans** with principal and interest breakdowns.
 - **Financial Summary Report**: High-level group metrics, including exact Current Balance.
 - **Member Register Report**: Detailed roster including Contribution Status, Pending Months, Active Loans, and Total Contributions.
 
@@ -179,6 +182,7 @@ The platform is built from the ground up for full bilingual usage.
 
 - **Scope**: The entire UI, validation messages, alert dialogs, generated PDFs, and AI Voice Assistant responses support both **Marathi** and **English**.
 - **Implementation**: Hardcoded strings are eliminated. Everything routes through `LanguageContext.tsx` using `t("key")`.
+- **PDF Generation**: Extensive dynamic parsing maps every column header, label, and dynamic status badge inside standard and custom PDF reports accurately to the user's preferred language.
 - **User Preference**: Language settings are persistent per device and synchronized with the backend.
 
 ---
