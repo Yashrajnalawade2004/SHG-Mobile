@@ -37,6 +37,11 @@ jobs:
         env:
           NODE_ENV: production
 
+      - name: Build Express Server
+        run: npm run server:build
+        env:
+          NODE_ENV: productionn
+
       - name: Configure SSH
         run: |
           mkdir -p ~/.ssh
@@ -77,8 +82,16 @@ jobs:
       - name: Smoke Test
         run: |
           ssh -i ~/.ssh/deploy_key -p "$SSH_PORT" \
-            "${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}" \
-            "curl -fsS http://127.0.0.1:5001/ >/dev/null"
+            "${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}" << 'EOF'
+            if ! curl -fsS http://127.0.0.1:5001/ >/dev/null; then
+              echo "===== SERVICE STATUS ====="
+              sudo systemctl status shg-dev --no-pager
+              echo
+              echo "===== LAST 100 LOGS ====="
+              sudo journalctl -u shg-dev -n 100 --no-pager
+              exit 1
+            fi
+            EOF
 
       - name: Deployment Complete
         run: echo "✅ Deployment completed successfully!"

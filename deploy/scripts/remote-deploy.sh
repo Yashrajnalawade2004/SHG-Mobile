@@ -15,7 +15,7 @@ cd "$REL_DIR"
 echo "==> Installing production dependencies"
 # Full install (not --omit=dev): the server runs via tsx, and tsx + dotenv
 # live in devDependencies. This also guarantees a clean, lockfile-exact tree.
-npm ci
+npm ci --omit=dev
 
 echo "==> Flipping 'current' symlink"
 ln -sfn "$REL_DIR" "$DEPLOY_PATH/current"
