@@ -2,7 +2,7 @@
 import * as Print from "expo-print";
 import * as Sharing from "expo-sharing";
 import { Platform, Alert } from "react-native";
-import { resolveRepaymentAmounts, calculateShgTotal, calculateBankTotal, calculateShgEmi, calculateBankEmi } from "../shared/accounting";
+import { resolveRepaymentAmounts, calculateShgTotal, calculateShgEmi } from "../shared/accounting";
 
 // ─── Utilities ────────────────────────────────────────────────────────────────
 
@@ -338,7 +338,7 @@ export async function generateGroupSavingsReport({ group, president, payments, g
   const membersWithData = members.filter(m => data.some((p: any) => p.memberId === m.id)).length;
   const summaryHtml = '<div class="summary-grid"><div class="summary-card"><div class="summary-label">' + t("common.pdf_members_with_payments") + '</div><div class="summary-value neutral">' + membersWithData + '</div></div><div class="summary-card"><div class="summary-label">' + t("common.pdf_total_collected") + '</div><div class="summary-value">' + formatCurrency(grandTotal) + '</div></div><div class="summary-card"><div class="summary-label">' + t("common.pdf_late_fees") + '</div><div class="summary-value danger">' + formatCurrency(grandLateFees) + '</div></div></div>';
 
-  const html = '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>' + reportTitle + '</title><style>' + getStyles() + '</style></head><body>' + buildHeader(reportTitle, group, groupMembers, generatedBy, t, language) + buildFilters(appliedFiltersText, t) + '<hr class="divider"><div class="section"><div class="section-heading">' + t("common.pdf_summary") + '</div>' + summaryHtml + '</div><div class="section"><div class="section-heading">' + t("common.pdf_detailed_transactions") + '</div><table><thead><tr><th class="c">' + t("common.pdf_sr") + '</th><th>' + t("common.pdf_member_name") + '</th><th>' + t("common.pdf_phone") + '</th><th>' + t("common.pdf_month") + '</th><th class="r">' + t("common.pdf_shg_amount") + '</th><th class="r">' + t("common.pdf_bank_amount") + '</th><th class="r">' + t("common.pdf_late_fee") + '</th><th class="c">' + t("common.pdf_method") + '</th><th class="c">' + t("common.pdf_status") + '</th><th>' + t("common.pdf_date") + '</th></tr></thead><tbody>' + rows + totalRow + '</tbody></table></div>' + buildFooter(presName, treasName, t) + '</body></html>';
+  const html = '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>' + reportTitle + '</title><style>' + getStyles() + '</style></head><body>' + buildHeader(reportTitle, group, groupMembers, generatedBy, t, language) + buildFilters(appliedFiltersText, t) + '<hr class="divider"><div class="section"><div class="section-heading">' + t("common.pdf_summary") + '</div>' + summaryHtml + '</div><div class="section"><div class="section-heading">' + t("common.pdf_detailed_transactions") + '</div><table><thead><tr><th class="c">' + t("common.pdf_sr") + '</th><th>' + t("common.pdf_member_name") + '</th><th>' + t("common.pdf_phone") + '</th><th>' + t("common.pdf_month") + '</th><th class="r">' + t("common.pdf_amount") + '</th><th class="r">' + t("common.pdf_late_fee") + '</th><th class="c">' + t("common.pdf_method") + '</th><th class="c">' + t("common.pdf_status") + '</th><th>' + t("common.pdf_date") + '</th></tr></thead><tbody>' + rows + totalRow + '</tbody></table></div>' + buildFooter(presName, treasName, t) + '</body></html>';
   await openAsPdf(html, "Savings_Report");
 }
 
@@ -371,8 +371,6 @@ export async function generateGroupLoansReport({ group, president, loans, loanRe
     const member = groupMembers.find((m: any) => m.id === loan.memberId);
     const outstanding = Math.max(0, loan.remainingBalance || 0);
     const repaid = Math.max(0, (loan.amount || 0) - outstanding);
-    const bankOutstanding = Math.max(0, loan.bankRemainingBalance || 0);
-    const bankRepaid = Math.max(0, (loan.bankLoanAmount || 0) - bankOutstanding);
 
     totalDisbursed += loan.amount || 0;
     totalRepaid += repaid;
@@ -391,18 +389,16 @@ export async function generateGroupLoansReport({ group, president, loans, loanRe
     }
 
     const shgEmi = calculateShgEmi(loan);
-    const bankEmi = calculateBankEmi(loan);
     let emiStr = t("common.pdf_monthly_installment") + ': ' + formatCurrency(shgEmi);
-    if (loan.hasBankLoan) emiStr += '<br/>Bank ' + t("common.pdf_monthly_installment") + ': ' + formatCurrency(bankEmi);
 
-    const row = '<tr><td class="c">' + srNo + '</td><td>' + (member?.name || "—") + '</td><td>' + (member?.phoneNumber || "—") + '</td><td>' + formatDate(loan.createdAt) + '</td><td class="r">' + formatCurrency(loan.amount) + '</td><td class="r">' + (loan.hasBankLoan ? formatCurrency(loan.bankLoanAmount) : "—") + '</td><td class="c">' + (loan.interest || 0) + '% <br/> ' + (loan.duration || "—") + ' mo<br/><span style="font-size: 8px;">' + emiStr + '</span></td><td class="r">' + formatCurrency(repaid) + '</td><td class="r">' + (loan.hasBankLoan ? formatCurrency(bankRepaid) : "—") + '</td><td class="r">' + formatCurrency(outstanding) + '</td><td class="r">' + (loan.hasBankLoan ? formatCurrency(bankOutstanding) : "—") + '</td><td class="c">' + statusBadge(ds, t) + '</td></tr>';
+    const row = '<tr><td class="c">' + srNo + '</td><td>' + (member?.name || "—") + '</td><td>' + (member?.phoneNumber || "—") + '</td><td>' + formatDate(loan.createdAt) + '</td><td class="r">' + formatCurrency(loan.amount) + '</td><td class="c">' + (loan.interest || 0) + '% <br/> ' + (loan.duration || "—") + ' mo<br/><span style="font-size: 8px;">' + emiStr + '</span></td><td class="r">' + formatCurrency(repaid) + '</td><td class="r">' + formatCurrency(outstanding) + '</td><td class="c">' + statusBadge(ds, t) + '</td></tr>';
 
     if (ds === "Completed") completedRows += row;
     else if (ds === "Active") activeRows += row;
     else otherRows += row;
   });
 
-  const tableHeader = '<table><thead><tr><th class="c">' + t("common.pdf_sr") + '</th><th>' + t("common.pdf_member_name") + '</th><th>' + t("common.pdf_phone") + '</th><th>' + t("common.pdf_loan_date") + '</th><th class="r">' + t("common.pdf_shg_amt") + '</th><th class="r">' + t("common.pdf_bank_amt") + '</th><th class="c">' + t("common.pdf_int_dur") + '</th><th class="r">' + t("common.pdf_shg_rep") + '</th><th class="r">' + t("common.pdf_bank_rep") + '</th><th class="r">' + t("common.pdf_shg_rem") + '</th><th class="r">' + t("common.pdf_bank_rem") + '</th><th class="c">' + t("common.pdf_status") + '</th></tr></thead><tbody>';
+  const tableHeader = '<table><thead><tr><th class="c">' + t("common.pdf_sr") + '</th><th>' + t("common.pdf_member_name") + '</th><th>' + t("common.pdf_phone") + '</th><th>' + t("common.pdf_loan_date") + '</th><th class="r">' + t("common.pdf_amount") + '</th><th class="c">' + t("common.pdf_int_dur") + '</th><th class="r">' + t("common.pdf_repaid") + '</th><th class="r">' + t("common.pdf_remaining") + '</th><th class="c">' + t("common.pdf_status") + '</th></tr></thead><tbody>';
 
   let tablesHtml = "";
   if (activeRows || (loanFilter === "active" || loanFilter === "all")) {
@@ -427,7 +423,7 @@ export async function generateGroupLoansReport({ group, president, loans, loanRe
 // 3. FINANCIAL SUMMARY REPORT
 // ═══════════════════════════════════════════════════════════════════════════════
 
-export async function generateFinancialSummaryReport({ group, president, payments, loans, loanRepayments, groupMembers, language, timeRange, startDate, endDate, filterMonth, filterYear, appliedFiltersText, t, user }: any) {
+export async function generateFinancialSummaryReport({ group, president, payments, loans, loanRepayments, loanLedger, groupMembers, language, timeRange, startDate, endDate, filterMonth, filterYear, appliedFiltersText, t, user }: any) {
   const generatedBy = user?.name || president?.name || "Admin";
   const reportTitle = t("common.pdf_financial_summary");
   const presName = groupMembers.find((m: any) => m.role === "president")?.name || "—";
@@ -444,11 +440,9 @@ export async function generateFinancialSummaryReport({ group, president, payment
 
   let filteredRepayments = filterByDateRange(loanRepayments || [], timeRange, startDate, endDate, filterMonth, filterYear);
   const totalRepayments = filteredRepayments.reduce((s: number, r: any) => s + resolveRepaymentAmounts(r).shgAmount, 0);
-  const totalBankRepayments = filteredRepayments.reduce((s: number, r: any) => s + resolveRepaymentAmounts(r).bankAmount, 0);
 
   const currentBalance = totalSavings + totalLateFees + totalRepayments - totalLoanDisbursed;
   const outstandingLoans = (loans || []).filter((l: any) => l.status === "approved" && (l.remainingBalance || 0) > 0).reduce((s: number, l: any) => s + (l.remainingBalance || 0), 0);
-  const bankOutstandingLoans = (loans || []).filter((l: any) => l.status === "approved" && l.hasBankLoan && (l.bankRemainingBalance || 0) > 0).reduce((s: number, l: any) => s + (l.bankRemainingBalance || 0), 0);
   const activeMembers = groupMembers.filter((m: any) => m.status === "active").length;
 
   // Period-wise breakdown
@@ -566,12 +560,8 @@ export async function generateMemberStatement({ group, president, groupMembers, 
     let ds = loan.status;
     if (loan.status === "approved") ds = outstanding <= 0 ? "Completed" : "Active";
     const remark = loan.rejectionReason ? '<span style="color:#dc2626;font-size:8px;">' + loan.rejectionReason + '</span>' : "—";
-    const shgEmi = calculateShgEmi(loan);
-    const bankEmi = calculateBankEmi(loan);
-    let emiStr = t("common.pdf_monthly_installment") + ': ' + formatCurrency(shgEmi) + '/mo';
-    if (loan.hasBankLoan) emiStr += '<br/>Bank ' + t("common.pdf_monthly_installment") + ': ' + formatCurrency(bankEmi) + '/mo';
 
-    loanRows += '<tr><td class="c">' + srNo++ + '</td><td>' + formatDate(loan.createdAt) + '</td><td class="r">' + formatCurrency(loan.amount) + '</td><td class="c">' + (loan.interest || 0) + '%</td><td class="c">' + (loan.duration || "—") + ' mo<br/><span style="font-size: 8px;">' + emiStr + '</span></td><td class="r">' + formatCurrency(repaid) + '</td><td class="r">' + formatCurrency(outstanding) + '</td><td class="c">' + statusBadge(ds, t) + '</td><td>' + remark + '</td></tr>';
+    loanRows += '<tr><td class="c">' + srNo++ + '</td><td>' + formatDate(loan.createdAt) + '</td><td class="r">' + formatCurrency(loan.amount) + '</td><td class="c">' + (loan.interest || 0) + '%</td><td class="c">' + (loan.duration || "—") + ' mo</td><td class="r">' + formatCurrency(repaid) + '</td><td class="r">' + formatCurrency(outstanding) + '</td><td class="c">' + statusBadge(ds, t) + '</td><td>' + remark + '</td></tr>';
   });
   if (!loanRows) loanRows = '<tr class="empty-row"><td colspan="9">' + t("common.pdf_empty_row") + '</td></tr>';
 
@@ -582,6 +572,109 @@ export async function generateMemberStatement({ group, president, groupMembers, 
 
   const summaryHtml = '<div class="summary-grid"><div class="summary-card"><div class="summary-label">' + t("common.pdf_member_name") + '</div><div class="summary-value" style="font-size:14px">' + member.name + '</div></div><div class="summary-card"><div class="summary-label">' + t("common.pdf_phone") + '</div><div class="summary-value neutral" style="font-size:14px">' + (member.phoneNumber || "—") + '</div></div><div class="summary-card"><div class="summary-label">' + t("common.pdf_role") + '</div><div class="summary-value neutral" style="font-size:14px">' + (member.role || "Member") + '</div></div><div class="summary-card"><div class="summary-label">' + t("common.pdf_total_savings") + '</div><div class="summary-value">' + formatCurrency(totalSavings) + '</div></div><div class="summary-card"><div class="summary-label">' + t("common.pdf_late_fees") + '</div><div class="summary-value danger">' + formatCurrency(totalLateFees) + '</div></div><div class="summary-card"><div class="summary-label">' + t("common.pdf_active_loan_balance") + '</div><div class="summary-value' + (activeLoan ? " danger" : "") + '">' + (activeLoan ? formatCurrency(activeLoan.remainingBalance) : "—") + '</div></div><div class="summary-card"><div class="summary-label">' + t("common.pdf_meetings_attended") + '</div><div class="summary-value neutral">' + attendedCount + ' / ' + completedMeetings.length + '</div></div><div class="summary-card"><div class="summary-label">' + t("common.pdf_attendance") + '</div><div class="summary-value' + (attendancePercent >= 75 ? "" : " danger") + '">' + attendancePercent + '%</div></div><div class="summary-card"><div class="summary-label">' + t("common.pdf_member_since") + '</div><div class="summary-value neutral" style="font-size:12px">' + formatDate(member.joinedAt || member.createdAt) + '</div></div></div>';
 
-  const html = '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>' + reportTitle + '</title><style>' + getStyles() + '</style></head><body>' + buildHeader(reportTitle, group, groupMembers, generatedBy, t, language) + '<hr class="divider"><div class="section"><div class="section-heading">' + t("common.pdf_member_information") + '</div>' + summaryHtml + '</div><div class="section"><div class="section-heading">' + t("common.pdf_payment_history") + '</div><table><thead><tr><th class="c">' + t("common.pdf_sr") + '</th><th>' + t("common.pdf_month") + '</th><th class="r">' + t("common.pdf_amount") + '</th><th class="r">' + t("common.pdf_late_fee") + '</th><th class="c">' + t("common.pdf_method") + '</th><th class="c">' + t("common.pdf_status") + '</th><th>' + t("common.pdf_date") + '</th><th>' + t("common.pdf_remarks") + '</th></tr></thead><tbody>' + paymentRows + '</tbody></table></div><div class="section"><div class="section-heading">' + t("common.pdf_loan_history") + '</div><table><thead><tr><th class="c">' + t("common.pdf_sr") + '</th><th>' + t("common.pdf_date") + '</th><th class="r">' + t("common.pdf_amount") + '</th><th class="c">' + t("common.pdf_interest") + '</th><th class="c">' + t("common.pdf_duration") + '</th><th class="r">' + t("common.pdf_repaid") + '</th><th class="r">' + t("common.pdf_outstanding") + '</th><th class="c">' + t("common.pdf_status") + '</th><th>' + t("common.pdf_remarks") + '</th></tr></thead><tbody>' + loanRows + '</tbody></table></div>' + buildFooter(presName, treasName, t) + '</body></html>';
+  const html = '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>' + reportTitle + '</title><style>' + getStyles() + '</style></head><body>' + buildHeader(reportTitle, group, groupMembers, generatedBy, t, language) + '<hr class="divider"><div class="section"><div class="section-heading">' + t("common.pdf_member_information") + '</div>' + summaryHtml + '</div>' + loanSummaryHtml + '<div class="section"><div class="section-heading">' + t("common.pdf_payment_history") + '</div><table><thead><tr><th class="c">' + t("common.pdf_sr") + '</th><th>' + t("common.pdf_month") + '</th><th class="r">' + t("common.pdf_amount") + '</th><th class="r">' + t("common.pdf_late_fee") + '</th><th class="c">' + t("common.pdf_method") + '</th><th class="c">' + t("common.pdf_status") + '</th><th>' + t("common.pdf_date") + '</th><th>' + t("common.pdf_remarks") + '</th></tr></thead><tbody>' + paymentRows + '</tbody></table></div><div class="section"><div class="section-heading">' + t("common.pdf_loan_history") + '</div><table><thead><tr><th class="c">' + t("common.pdf_sr") + '</th><th>' + t("common.pdf_date") + '</th><th class="r">' + t("common.pdf_amount") + '</th><th class="c">' + t("common.pdf_interest") + '</th><th class="c">' + t("common.pdf_duration") + '</th><th class="r">' + t("common.pdf_repaid") + '</th><th class="r">' + t("common.pdf_outstanding") + '</th><th class="c">' + t("common.pdf_status") + '</th><th>' + t("common.pdf_remarks") + '</th></tr></thead><tbody>' + loanRows + '</tbody></table></div>' + buildFooter(presName, treasName, t) + '</body></html>';
   await openAsPdf(html, "Member_Statement_" + (member.name || "").replace(/\s+/g, "_"));
+}
+export async function generateBankLoanStatementReport(
+  groupBankLoans: any[],
+  bankLoanAllocations: any[],
+  members: any[],
+  group: any,
+  t: any
+) {
+  let html = getHeaderHtml(group, t("bankLoans") + " " + t("auto.statement"), t);
+  
+  for (const loan of groupBankLoans) {
+    const loanAllocs = bankLoanAllocations.filter(a => a.bankLoanId === loan.id);
+    const totalAlloc = loanAllocs.reduce((s, a) => s + a.allocatedPrincipal, 0);
+    const totalOut = loanAllocs.reduce((s, a) => s + a.outstandingBalance, 0);
+    
+    html += `<div style="margin-bottom:20px; border:1px solid #ddd; padding:15px; border-radius:8px;">
+      <h3 style="margin-top:0;">${loan.bankName} - ${loan.amount.toLocaleString("en-IN")} (Sanctioned)</h3>
+      <p style="margin:5px 0;"><strong>Status:</strong> ${loan.status} | <strong>Outstanding:</strong> Rs. ${totalOut.toLocaleString("en-IN")}</p>`;
+      
+    if (loanAllocs.length > 0) {
+      html += `<table style="width:100%; border-collapse:collapse; margin-top:10px; font-size:12px;">
+        <tr style="background:#f1f5f9; border-bottom:2px solid #cbd5e1;">
+          <th style="padding:8px; text-align:left;">Member</th>
+          <th style="padding:8px; text-align:right;">Allocated</th>
+          <th style="padding:8px; text-align:right;">Outstanding</th>
+        </tr>`;
+        
+      for (const a of loanAllocs) {
+        const member = members.find(m => m.id === a.memberId);
+        html += `<tr style="border-bottom:1px solid #e2e8f0;">
+          <td style="padding:8px;">${member ? member.name : 'Unknown'}</td>
+          <td style="padding:8px; text-align:right;">${a.allocatedPrincipal.toLocaleString("en-IN")}</td>
+          <td style="padding:8px; text-align:right;">${a.outstandingBalance.toLocaleString("en-IN")}</td>
+        </tr>`;
+      }
+      html += `</table>`;
+    }
+    html += `</div>`;
+  }
+  
+  html += getFooterHtml(t);
+  return printOrShareHtml(html, `Bank_Loan_Statement_${Date.now()}.pdf`, t);
+}
+
+export async function generateMemberStatementReport(
+  memberId: string,
+  members: any[],
+  loans: any[],
+  bankLoanAllocations: any[],
+  groupBankLoans: any[],
+  group: any,
+  t: any
+) {
+  const member = members.find(m => m.id === memberId);
+  if (!member) return;
+  
+  let html = getHeaderHtml(group, t("auto.member_statement") + " - " + member.name, t);
+  
+  const memberLoans = loans.filter(l => l.memberId === memberId);
+  html += `<h3>${t("loans")}</h3>`;
+  if (memberLoans.length === 0) {
+    html += `<p>No SHG Loans</p>`;
+  } else {
+    html += `<table style="width:100%; border-collapse:collapse; margin-bottom:20px; font-size:12px;">
+      <tr style="background:#f1f5f9; border-bottom:2px solid #cbd5e1;">
+        <th style="padding:8px; text-align:left;">Amount</th>
+        <th style="padding:8px; text-align:right;">Balance</th>
+        <th style="padding:8px; text-align:center;">Status</th>
+      </tr>`;
+    for (const l of memberLoans) {
+      html += `<tr style="border-bottom:1px solid #e2e8f0;">
+        <td style="padding:8px;">${l.amount.toLocaleString("en-IN")}</td>
+        <td style="padding:8px; text-align:right;">${l.remainingBalance.toLocaleString("en-IN")}</td>
+        <td style="padding:8px; text-align:center;">${l.status}</td>
+      </tr>`;
+    }
+    html += `</table>`;
+  }
+  
+  const memberAllocs = bankLoanAllocations.filter(a => a.memberId === memberId);
+  html += `<h3>${t("bankLoans")}</h3>`;
+  if (memberAllocs.length === 0) {
+    html += `<p>No Bank Loans</p>`;
+  } else {
+    html += `<table style="width:100%; border-collapse:collapse; margin-bottom:20px; font-size:12px;">
+      <tr style="background:#f1f5f9; border-bottom:2px solid #cbd5e1;">
+        <th style="padding:8px; text-align:left;">Bank</th>
+        <th style="padding:8px; text-align:right;">Allocated</th>
+        <th style="padding:8px; text-align:right;">Balance</th>
+      </tr>`;
+    for (const a of memberAllocs) {
+      const bl = groupBankLoans.find(b => b.id === a.bankLoanId);
+      html += `<tr style="border-bottom:1px solid #e2e8f0;">
+        <td style="padding:8px;">${bl ? bl.bankName : 'Unknown'}</td>
+        <td style="padding:8px; text-align:right;">${a.allocatedPrincipal.toLocaleString("en-IN")}</td>
+        <td style="padding:8px; text-align:right;">${a.outstandingBalance.toLocaleString("en-IN")}</td>
+      </tr>`;
+    }
+    html += `</table>`;
+  }
+  
+  html += getFooterHtml(t);
+  return printOrShareHtml(html, `Member_Statement_${member.name.replace(/\s+/g, "_")}.pdf`, t);
 }

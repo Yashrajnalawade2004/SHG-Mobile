@@ -8,7 +8,8 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useData } from "@/contexts/DataContext";
 import Colors from "@/constants/colors";
-import { generateGroupSavingsReport, generateGroupLoansReport, generateFinancialSummaryReport, generateMemberRegisterReport } from "@/lib/pdf-generator";
+import { apiGet } from "@/lib/api";
+import { generateGroupSavingsReport, generateGroupLoansReport, generateFinancialSummaryReport, generateMemberRegisterReport, generateBankLoanStatementReport, generateMemberStatementReport } from "@/lib/pdf-generator";
 
 const currentYear = new Date().getFullYear();
 const YEARS = Array.from({ length: 5 }, (_, i) => String(currentYear - i));
@@ -29,7 +30,7 @@ export default function ReportsScreen() {
   const insets = useSafeAreaInsets();
   const { group, president, user, isPresident, isTreasurer } = useAuth();
   const { t, language } = useLanguage();
-  const { payments, loans, loanRepayments, groupMembers } = useData();
+  const { payments, loans, loanRepayments, groupMembers, groupBankLoans, bankLoanAllocations } = useData();
 
   const [activeReport, setActiveReport] = useState<string | null>(null);
 
@@ -96,7 +97,42 @@ export default function ReportsScreen() {
     }
 
     setGenerating(type);
+    
+    if (type === "bankLoans") {
+      try {
+        await generateBankLoanStatementReport(groupBankLoans, bankLoanAllocations, groupMembers, group, t);
+      } catch (e) {
+        console.error(e);
+        Alert.alert(t("error"), "Failed to generate report");
+      }
+      setGenerating(null);
+      return;
+    }
+    
+    if (type === "memberStatement") {
+      try {
+        const memberId = groupMembers[0]?.id; // Default to first member for now
+        if (memberId) {
+          await generateMemberStatementReport(memberId, groupMembers, loans, bankLoanAllocations, groupBankLoans, group, t);
+        }
+      } catch (e) {
+        console.error(e);
+        Alert.alert(t("error"), "Failed to generate report");
+      }
+      setGenerating(null);
+      return;
+    }
+
     try {
+      let loanLedger = [];
+      if (type === "loans" || type === "summary") {
+        try {
+          loanLedger = await apiGet(`/api/groups/${group.id}/loan-ledger`);
+        } catch (e) {
+          console.error("Failed to fetch loan ledger", e);
+        }
+      }
+
       const commonArgs = {
         group,
         president: president || undefined,
@@ -104,6 +140,7 @@ export default function ReportsScreen() {
         payments,
         loans,
         loanRepayments,
+        loanLedger,
         groupMembers,
         language,
         t,
@@ -355,6 +392,54 @@ export default function ReportsScreen() {
 
               <Pressable style={[styles.downloadBtn, { backgroundColor: "#f59e0b" }]} onPress={() => handleGenerate("members")} disabled={generating !== null}>
                 {generating === "members" ? <ActivityIndicator color="#fff" size="small" /> : <><Ionicons name="download-outline" size={18} color="#fff" /><Text style={styles.downloadText}>{t("common.download")}</Text></>}
+              </Pressable>
+            </View>
+          )}
+        </Pressable>
+
+        {/* Bank Loans Statement */}
+        <Pressable
+          style={[styles.reportCard, activeReport === "bankLoans" && styles.reportCardActive]}
+          onPress={() => setActiveReport(activeReport === "bankLoans" ? null : "bankLoans")}
+        >
+          <View style={styles.cardHeader}>
+            <View style={[styles.iconBox, { backgroundColor: "#d9770615" }]}>
+              <Ionicons name="business-outline" size={24} color="#d97706" />
+            </View>
+            <View style={styles.reportInfo}>
+              <Text style={styles.reportTitle}>{t("bankLoans") + " " + t("auto.statement")}</Text>
+              <Text style={styles.reportDesc}>{t("auto.detailed_view_of_all_members")}</Text>
+            </View>
+            <Ionicons name={activeReport === "bankLoans" ? "chevron-up" : "chevron-down"} size={20} color={Colors.light.textSecondary} />
+          </View>
+          {activeReport === "bankLoans" && (
+            <View style={styles.cardBody}>
+              <Pressable style={[styles.downloadBtn, { backgroundColor: "#d97706" }]} onPress={() => handleGenerate("bankLoans")} disabled={generating !== null}>
+                {generating === "bankLoans" ? <ActivityIndicator color="#fff" size="small" /> : <><Ionicons name="download-outline" size={18} color="#fff" /><Text style={styles.downloadText}>{t("common.download")}</Text></>}
+              </Pressable>
+            </View>
+          )}
+        </Pressable>
+        
+        {/* Member Statement */}
+        <Pressable
+          style={[styles.reportCard, activeReport === "memberStatement" && styles.reportCardActive]}
+          onPress={() => setActiveReport(activeReport === "memberStatement" ? null : "memberStatement")}
+        >
+          <View style={styles.cardHeader}>
+            <View style={[styles.iconBox, { backgroundColor: "#0284c715" }]}>
+              <Ionicons name="person-outline" size={24} color="#0284c7" />
+            </View>
+            <View style={styles.reportInfo}>
+              <Text style={styles.reportTitle}>{t("auto.member_statement")}</Text>
+              <Text style={styles.reportDesc}>{t("auto.detailed_view_of_all_members")}</Text>
+            </View>
+            <Ionicons name={activeReport === "memberStatement" ? "chevron-up" : "chevron-down"} size={20} color={Colors.light.textSecondary} />
+          </View>
+          {activeReport === "memberStatement" && (
+            <View style={styles.cardBody}>
+              <Pressable style={[styles.downloadBtn, { backgroundColor: "#0284c7" }]} onPress={() => handleGenerate("memberStatement")} disabled={generating !== null}>
+                {generating === "memberStatement" ? <ActivityIndicator color="#fff" size="small" /> : <><Ionicons name="download-outline" size={18} color="#fff" /><Text style={styles.downloadText}>{t("common.download")}</Text></>}
               </Pressable>
             </View>
           )}

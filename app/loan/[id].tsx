@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   View, Text, StyleSheet, ScrollView, Pressable, Platform,
-  TextInput, Modal, Alert, Switch
+  TextInput, Modal, Alert
 } from "react-native";
 import { useLocalSearchParams, router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -10,7 +10,8 @@ import * as Haptics from "expo-haptics";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useData } from "@/contexts/DataContext";
-import { resolveRepaymentAmounts, calculateShgTotal, calculateBankTotal, calculateShgEmi, calculateBankEmi } from "@/shared/accounting";
+import { apiGet } from "@/lib/api";
+import { calculateNextLedgerEntry } from "@/shared/accounting";
 import Colors from "@/constants/colors";
 import ConfirmDialog from "@/components/ConfirmDialog";
 
@@ -30,53 +31,32 @@ type DialogType = "approveTreasurer" | "rejectTreasurer" | "rejectPresident" | "
 export default function LoanDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const insets = useSafeAreaInsets();
-  const { isPresident, isTreasurer, user } = useAuth();
-  const { t, language } = useLanguage();
+  const { isPresident, isTreasurer } = useAuth();
+  const { t } = useLanguage();
   const {
     loans, loanRepayments,
     treasurerApproveLoan, treasurerRejectLoan,
     approveLoan, rejectLoan,
     addRepayment, deleteRepayment, deleteLoan,
-    affiliatedBanks,
   } = useData();
   const loan = loans.find((l) => l.id === id);
 
+  const [ledgerEntries, setLedgerEntries] = useState<any[]>([]);
+  useEffect(() => {
+    if (loan?.calculationMethod === 'reducing_balance') {
+      apiGet(`/api/loans/${loan.id}/ledger`)
+        .then((data: any) => setLedgerEntries(data || []))
+        .catch(console.error);
+    }
+  }, [loan?.id, loan?.calculationMethod, loan?.remainingBalance]);
+
   const [resolutionNo, setResolutionNo] = useState("");
   const [repayAmount, setRepayAmount] = useState("");
-  const [shgRepayAmount, setShgRepayAmount] = useState("");
-  const [bankRepayAmount, setBankRepayAmount] = useState("");
   const [showRepay, setShowRepay] = useState(false);
   const [dialog, setDialog] = useState<DialogType>(null);
   const [rejectReason, setRejectReason] = useState("");
   const [deleteRepaymentId, setDeleteRepaymentId] = useState<string | null>(null);
   const [resolutionError, setResolutionError] = useState(false);
-
-  const [hasBankLoan, setHasBankLoan] = useState(loan?.hasBankLoan || false);
-  const [bankName, setBankName] = useState(loan?.bankName || "");
-  const [bankAmount, setBankAmount] = useState(loan?.bankLoanAmount?.toString() || "");
-  const [bankInterestRate, setBankInterestRate] = useState(loan?.bankInterestRate?.toString() || "");
-  const [bankDuration, setBankDuration] = useState(loan?.bankDuration?.toString() || "");
-  const [bankRemarks, setBankRemarks] = useState(loan?.bankLoanRemarks || "");
-
-  const validateBankDetails = () => {
-    if (!hasBankLoan) return true;
-    if (!bankName.trim()) { Alert.alert(t("error"), t("bank.bank_required")); return false; }
-    if (!parseInt(bankAmount) || parseInt(bankAmount) <= 0) { Alert.alert(t("error"), t("bank.bank_amount_required")); return false; }
-    if (!parseInt(bankDuration) || parseInt(bankDuration) <= 0) { Alert.alert(t("error"), t("bank.bank_duration_required")); return false; }
-    return true;
-  };
-
-  const getBankPayload = () => {
-    if (!hasBankLoan) return { hasBankLoan: false };
-    return {
-      hasBankLoan: true,
-      bankName: bankName.trim(),
-      bankAmount: parseInt(bankAmount),
-      bankInterestRate: parseFloat(bankInterestRate) || 0,
-      bankDuration: parseInt(bankDuration),
-      bankRemarks: bankRemarks.trim() || undefined
-    };
-  };
 
   if (!loan) {
     return (
@@ -90,40 +70,46 @@ export default function LoanDetailScreen() {
   const repayments = loanRepayments
     .filter((r) => r.loanId === loan.id)
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  const shgTotal = calculateShgTotal(loan);
-  const bankTotal = calculateBankTotal(loan);
-  const shgEmi = calculateShgEmi(loan);
-  const bankEmi = calculateBankEmi(loan);
-  let currentShgRem = shgTotal;
-  let currentBankRem = bankTotal;
 
+  let currentRem = loan.amount;
   const passbookEntries = [...repayments].reverse().map(r => {
-    const { shgAmount, bankAmount } = resolveRepaymentAmounts(r);
-    currentShgRem = Math.max(0, currentShgRem - shgAmount);
-    currentBankRem = Math.max(0, currentBankRem - bankAmount);
+    currentRem = Math.max(0, currentRem - r.amount);
     return {
       ...r,
-      resolvedShg: shgAmount,
-      resolvedBank: bankAmount,
-      runShgRem: currentShgRem,
-      runBankRem: currentBankRem,
+      runRem: currentRem,
     };
   }).reverse();
+
+  const isReducingBalance = loan.calculationMethod === 'reducing_balance';
+  const displayEntries = isReducingBalance ? ledgerEntries.sort((a, b) => new Date(b.transactionDate).getTime() - new Date(a.transactionDate).getTime()) : passbookEntries;
 
   const totalRepaid = repayments.reduce((sum, r) => sum + r.amount, 0);
   const color = loanStatusColor(loan.status);
 
   const totalInterest = Math.round(loan.amount * (loan.interest / 100) * loan.duration);
-  const bankInterest = loan.hasBankLoan ? Math.round((loan.bankLoanAmount || 0) * ((loan.bankInterestRate || 0) / 100) * (loan.bankDuration || 0)) : 0;
-  const totalRepayable = loan.amount + totalInterest + (loan.hasBankLoan ? ((loan.bankLoanAmount || 0) + bankInterest) : 0);
+  const totalRepayable = loan.amount + totalInterest;
   const rawProgress = totalRepayable > 0 ? (totalRepaid / totalRepayable) * 100 : 0;
   const progress = Math.min(100, Math.max(0, rawProgress));
 
+  const shgEmi = loan.duration > 0 ? Math.round((loan.amount + totalInterest) / loan.duration) : 0;
+
+  // Reducing Balance Logic
+  const monthsElapsed = loan.approvedAt ? Math.max(1, Math.floor((new Date().getTime() - new Date(loan.approvedAt).getTime()) / (1000 * 60 * 60 * 24 * 30))) : 1;
+  const remainingMonths = Math.max(1, loan.duration - monthsElapsed + 1);
+  const nextLedger = loan.calculationMethod === "reducing_balance" 
+    ? calculateNextLedgerEntry(
+        { remainingBalance: loan.remainingBalance, outstandingInterest: loan.outstandingInterest || 0 },
+        0, // 0 payment to just see the breakdown
+        loan.interest,
+        remainingMonths,
+        "due"
+      )
+    : null;
+
   const handleTreasurerApprove = async () => {
     try {
-      if (!validateBankDetails()) return;
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      await treasurerApproveLoan(loan.id, getBankPayload());
+      await treasurerApproveLoan(loan.id);
     } catch (e: any) {
       Alert.alert(t("error"), e.message || t("error"));
     }
@@ -146,10 +132,9 @@ export default function LoanDetailScreen() {
         setResolutionError(true);
         return;
       }
-      if (!validateBankDetails()) return;
       setResolutionError(false);
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      await approveLoan(loan.id, resolutionNo.trim(), undefined, getBankPayload());
+      await approveLoan(loan.id, resolutionNo.trim());
     } catch (e: any) {
       Alert.alert(t("error"), e.message || t("error"));
     }
@@ -168,24 +153,11 @@ export default function LoanDetailScreen() {
 
   const handleRepay = async () => {
     try {
-      if (loan.hasBankLoan) {
-        const shgNum = parseInt(shgRepayAmount) || 0;
-        const bankNum = parseInt(bankRepayAmount) || 0;
-        if (shgNum <= 0 && bankNum <= 0) {
-          Alert.alert(t("error"), t("bank.enter_at_least_one"));
-          return;
-        }
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-        await addRepayment(loan.id, { shgAmount: shgNum, bankAmount: bankNum });
-        setShgRepayAmount("");
-        setBankRepayAmount("");
-      } else {
-        const num = parseInt(repayAmount);
-        if (!num || num <= 0) return;
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-        await addRepayment(loan.id, { shgAmount: num, bankAmount: 0 });
-        setRepayAmount("");
-      }
+      const num = parseInt(repayAmount);
+      if (!num || num <= 0) return;
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      await addRepayment(loan.id, { shgAmount: num, bankAmount: 0 });
+      setRepayAmount("");
       setShowRepay(false);
     } catch (e: any) {
       Alert.alert(t("error"), e.message || t("error"));
@@ -218,98 +190,19 @@ export default function LoanDetailScreen() {
   const showPresidentActions = isPresident && (loan.status === "pending_president" || loan.status === "pending_treasurer");
   const isDirectOverride = loan.presidentOverride === true;
   const isFinal = loan.status === "approved" || loan.status === "rejected" || loan.status === "treasurer_rejected";
+
+  const previewRepayAmount = parseInt(repayAmount) || 0;
+  const repaymentPreview = loan.calculationMethod === "reducing_balance" 
+    ? calculateNextLedgerEntry(
+        { remainingBalance: loan.remainingBalance, outstandingInterest: loan.outstandingInterest || 0 },
+        previewRepayAmount,
+        loan.interest,
+        remainingMonths,
+        "due"
+      )
+    : null;
   const showRepayment = loan.status === "approved";
   const canDelete = isPresident;
-
-  const renderBankForm = () => (
-    <View style={{ marginTop: 12 }}>
-      <View style={[styles.inputContainer, { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 12, paddingHorizontal: 16, backgroundColor: Colors.light.card, borderWidth: 1, borderColor: hasBankLoan ? Colors.light.primary : Colors.light.border }]}>
-        <View style={{ flex: 1 }}>
-          <Text style={[styles.label, { marginBottom: 2 }]}>{t("Bank Assisted Loan")}</Text>
-          <Text style={{ fontSize: 12, color: Colors.light.textMuted, fontFamily: "Poppins_400Regular" }}>
-            {t("Bank assisted loan desc")}
-          </Text>
-        </View>
-        <Switch
-          value={hasBankLoan}
-          onValueChange={setHasBankLoan}
-          trackColor={{ false: Colors.light.border, true: Colors.light.primary + "80" }}
-          thumbColor={hasBankLoan ? Colors.light.primary : "#f4f3f4"}
-        />
-      </View>
-
-      {hasBankLoan && (
-        <View style={styles.bankFormCard}>
-          <Text style={styles.label}>{t("bank.select_bank")} *</Text>
-          <View style={styles.inputContainer}>
-            <TextInput
-              style={styles.input}
-              placeholder={t("bank.select_bank")}
-              placeholderTextColor={Colors.light.textMuted}
-              value={bankName}
-              onChangeText={setBankName}
-              autoCapitalize="words"
-            />
-          </View>
-
-          <Text style={[styles.label, { marginTop: 12 }]}>{t("bank.bank_loan_amount")} *</Text>
-          <View style={styles.inputContainer}>
-            <Text style={styles.rupeeText}>Rs.</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="0"
-              placeholderTextColor={Colors.light.textMuted}
-              value={bankAmount}
-              onChangeText={setBankAmount}
-              keyboardType="number-pad"
-            />
-          </View>
-
-          <View style={{ flexDirection: "row", gap: 12, marginTop: 12 }}>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.label}>{t("bank.bank_interest_rate")}</Text>
-              <View style={styles.inputContainer}>
-                <TextInput
-                  style={styles.input}
-                  placeholder="0"
-                  placeholderTextColor={Colors.light.textMuted}
-                  value={bankInterestRate}
-                  onChangeText={setBankInterestRate}
-                  keyboardType="decimal-pad"
-                />
-                <Text style={styles.suffix}>%</Text>
-              </View>
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.label}>{t("bank.bank_loan_duration")} *</Text>
-              <View style={styles.inputContainer}>
-                <TextInput
-                  style={styles.input}
-                  placeholder="0"
-                  placeholderTextColor={Colors.light.textMuted}
-                  value={bankDuration}
-                  onChangeText={setBankDuration}
-                  keyboardType="number-pad"
-                />
-                <Text style={styles.suffix}>{t("auto.mo")}</Text>
-              </View>
-            </View>
-          </View>
-
-          <Text style={[styles.label, { marginTop: 12 }]}>{t("bank.bank_loan_remarks")}</Text>
-          <View style={styles.inputContainer}>
-            <TextInput
-              style={styles.input}
-              placeholder={t("enter_remarks")}
-              placeholderTextColor={Colors.light.textMuted}
-              value={bankRemarks}
-              onChangeText={setBankRemarks}
-            />
-          </View>
-        </View>
-      )}
-    </View>
-  );
 
   return (
     <View style={{ flex: 1, backgroundColor: Colors.light.background }}>
@@ -356,107 +249,131 @@ export default function LoanDetailScreen() {
           </View>
         )}
 
-        {loan.hasBankLoan ? (
-          <View style={styles.amountCard}>
-            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-              <View>
-                <Text style={styles.amountLabel}>{t("bank.combined_outstanding")}</Text>
-                <Text style={styles.amountValue}>Rs. {((loan.remainingBalance || 0) + (loan.bankRemainingBalance || 0)).toLocaleString("en-IN")}</Text>
-              </View>
-              <View style={{ backgroundColor: Colors.light.primary + "20", paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 }}>
-                <Text style={{ fontFamily: "Poppins_600SemiBold", fontSize: 12, color: Colors.light.primary }}>
-                  {t("bank.shg_and_bank")}
-                </Text>
-              </View>
+        <View style={styles.amountCard}>
+          <Text style={styles.amountLabel}>{t("pdf_financial_summary")}</Text>
+          <View style={[styles.amountRow, { flexWrap: "wrap", marginTop: 10 }]}>
+            <View style={[styles.amountDetail, { width: '48%', marginBottom: 12 }]}>
+              <Text style={styles.amountDetailLabel}>{t("loanAmount")}</Text>
+              <Text style={styles.amountDetailValue}>Rs. {loan.amount.toLocaleString("en-IN")}</Text>
             </View>
-
-            <View style={{ flexDirection: "row", marginTop: 16, gap: 12 }}>
-              <View style={{ flex: 1, backgroundColor: Colors.light.background, padding: 10, borderRadius: 10 }}>
-                <Text style={{ fontFamily: "Poppins_600SemiBold", fontSize: 13, color: Colors.light.text, marginBottom: 8 }}>{t("bank.shg_portion")}</Text>
-                <View style={{ gap: 4 }}>
-                  <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-                    <Text style={{ fontSize: 11, color: Colors.light.textSecondary }}>{t("loanAmount")}</Text>
-                    <Text style={{ fontSize: 11, fontFamily: "Poppins_600SemiBold" }}>Rs. {loan.amount.toLocaleString("en-IN")}</Text>
-                  </View>
-                  <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-                    <Text style={{ fontSize: 11, color: Colors.light.textSecondary }}>{t("interest")}</Text>
-                    <Text style={{ fontSize: 11, fontFamily: "Poppins_600SemiBold" }}>{loan.interest}%</Text>
-                  </View>
-                  <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-                    <Text style={{ fontSize: 11, color: Colors.light.textSecondary }}>{t("monthly_installment")}</Text>
-                    <Text style={{ fontSize: 11, fontFamily: "Poppins_600SemiBold" }}>Rs. {shgEmi.toLocaleString("en-IN")}</Text>
-                  </View>
-                  <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-                    <Text style={{ fontSize: 11, color: Colors.light.textSecondary }}>{t("bank.shg_outstanding")}</Text>
-                    <Text style={{ fontSize: 11, fontFamily: "Poppins_700Bold", color: loan.remainingBalance > 0 ? Colors.light.danger : Colors.light.success }}>Rs. {loan.remainingBalance.toLocaleString("en-IN")}</Text>
-                  </View>
-                </View>
-              </View>
-
-              <View style={{ flex: 1, backgroundColor: Colors.light.background, padding: 10, borderRadius: 10 }}>
-                <Text style={{ fontFamily: "Poppins_600SemiBold", fontSize: 13, color: Colors.light.text, marginBottom: 8 }}>{t("bank.bank_portion")}</Text>
-                <View style={{ gap: 4 }}>
-                  <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-                    <Text style={{ fontSize: 11, color: Colors.light.textSecondary }}>{t("loanAmount")}</Text>
-                    <Text style={{ fontSize: 11, fontFamily: "Poppins_600SemiBold" }}>Rs. {(loan.bankLoanAmount || 0).toLocaleString("en-IN")}</Text>
-                  </View>
-                  <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-                    <Text style={{ fontSize: 11, color: Colors.light.textSecondary }}>{t("interest")}</Text>
-                    <Text style={{ fontSize: 11, fontFamily: "Poppins_600SemiBold" }}>{loan.bankInterestRate || 0}%</Text>
-                  </View>
-                  <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-                    <Text style={{ fontSize: 11, color: Colors.light.textSecondary }}>{t("monthly_installment")}</Text>
-                    <Text style={{ fontSize: 11, fontFamily: "Poppins_600SemiBold" }}>Rs. {bankEmi.toLocaleString("en-IN")}</Text>
-                  </View>
-                  <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-                    <Text style={{ fontSize: 11, color: Colors.light.textSecondary }}>{t("bank.bank_outstanding")}</Text>
-                    <Text style={{ fontSize: 11, fontFamily: "Poppins_700Bold", color: (loan.bankRemainingBalance || 0) > 0 ? Colors.light.danger : Colors.light.success }}>Rs. {(loan.bankRemainingBalance || 0).toLocaleString("en-IN")}</Text>
-                  </View>
-                </View>
-              </View>
+            <View style={[styles.amountDetail, { width: '48%', marginBottom: 12 }]}>
+              <Text style={styles.amountDetailLabel}>{t("interest")}</Text>
+              <Text style={styles.amountDetailValue}>{loan.interest}%</Text>
             </View>
-
-            {showRepayment && (
-              <View style={[styles.progressContainer, { marginTop: 16 }]}>
-                <View style={styles.progressBar}>
-                  <View style={[styles.progressFill, { width: `${Math.min(progress, 100)}%` as any }]} />
-                </View>
-                <Text style={styles.progressText}>{Math.round(progress)}% {t("auto.repaid")}</Text>
+            <View style={[styles.amountDetail, { width: '48%', marginBottom: 12 }]}>
+              <Text style={styles.amountDetailLabel}>{t("duration")}</Text>
+              <Text style={styles.amountDetailValue}>{loan.duration} {t("auto.mo")}</Text>
+            </View>
+            <View style={[styles.amountDetail, { width: '48%', marginBottom: 12 }]}>
+              <Text style={styles.amountDetailLabel}>{t("remaining_months")}</Text>
+              <Text style={[styles.amountDetailValue, loan.remainingBalance <= 0 ? { color: Colors.light.success } : {}]}>
+                {loan.remainingBalance <= 0 ? (t("completed") || "Completed") : `${remainingMonths} ${t("auto.mo")}`}
+              </Text>
+            </View>
+            <View style={[styles.amountDetail, { width: '48%', marginBottom: 12 }]}>
+              <Text style={styles.amountDetailLabel}>{t("remaining")}</Text>
+              <Text style={[styles.amountDetailValue, { color: loan.remainingBalance > 0 ? Colors.light.danger : Colors.light.success }]}>
+                Rs. {loan.remainingBalance.toLocaleString("en-IN")}
+              </Text>
+            </View>
+            <View style={[styles.amountDetail, { width: '48%', marginBottom: 12 }]}>
+              <Text style={styles.amountDetailLabel}>{t("outstanding_interest")}</Text>
+              <Text style={[styles.amountDetailValue, { color: (loan.outstandingInterest || 0) > 0 ? Colors.light.danger : Colors.light.text }]}>
+                Rs. {(loan.outstandingInterest || 0).toLocaleString("en-IN")}
+              </Text>
+            </View>
+            <View style={[styles.amountDetail, { width: '48%', marginBottom: 12 }]}>
+              <Text style={styles.amountDetailLabel}>{t("total_principal_paid")}</Text>
+              <Text style={styles.amountDetailValue}>Rs. {(loan.totalPrincipalPaid || 0).toLocaleString("en-IN")}</Text>
+            </View>
+            <View style={[styles.amountDetail, { width: '48%', marginBottom: 12 }]}>
+              <Text style={styles.amountDetailLabel}>{t("total_interest_paid")}</Text>
+              <Text style={styles.amountDetailValue}>Rs. {(loan.totalInterestPaid || 0).toLocaleString("en-IN")}</Text>
+            </View>
+            <View style={[styles.amountDetail, { width: '48%', marginBottom: 12 }]}>
+              <Text style={styles.amountDetailLabel}>{t("loan_start_date")}</Text>
+              <Text style={styles.amountDetailValue}>{new Date(loan.createdAt).toLocaleDateString()}</Text>
+            </View>
+            {loan.approvedAt && (
+              <View style={[styles.amountDetail, { width: '48%', marginBottom: 12 }]}>
+                <Text style={styles.amountDetailLabel}>{t("loan_approval_date")}</Text>
+                <Text style={styles.amountDetailValue}>{new Date(loan.approvedAt).toLocaleDateString()}</Text>
+              </View>
+            )}
+            {loan.resolutionNo && (
+              <View style={[styles.amountDetail, { width: '48%', marginBottom: 12 }]}>
+                <Text style={styles.amountDetailLabel}>{t("resolution_number")}</Text>
+                <Text style={styles.amountDetailValue}>{loan.resolutionNo}</Text>
+              </View>
+            )}
+            {loan.meetingId && (
+              <View style={[styles.amountDetail, { width: '48%', marginBottom: 12 }]}>
+                <Text style={styles.amountDetailLabel}>{t("meeting_reference")}</Text>
+                <Text style={styles.amountDetailValue}>{loan.meetingId}</Text>
               </View>
             )}
           </View>
-        ) : (
-          <View style={styles.amountCard}>
-            <Text style={styles.amountLabel}>{t("loanAmount")}</Text>
-            <Text style={styles.amountValue}>Rs. {loan.amount.toLocaleString("en-IN")}</Text>
-            <View style={styles.amountRow}>
-              <View style={styles.amountDetail}>
-                <Text style={styles.amountDetailLabel}>{t("interest")}</Text>
-                <Text style={styles.amountDetailValue}>{loan.interest}%</Text>
+          {showRepayment && (
+            <View style={styles.progressContainer}>
+              <View style={styles.progressBar}>
+                <View style={[styles.progressFill, { width: `${Math.min(progress, 100)}%` as any }]} />
               </View>
-              <View style={styles.amountDetail}>
-                <Text style={styles.amountDetailLabel}>{t("duration")}</Text>
-                <Text style={styles.amountDetailValue}>{loan.duration} {t("auto.mo")}</Text>
-              </View>
-              <View style={styles.amountDetail}>
-                <Text style={styles.amountDetailLabel}>{t("monthly_installment")}</Text>
-                <Text style={styles.amountDetailValue}>Rs. {shgEmi.toLocaleString("en-IN")}</Text>
-              </View>
-              <View style={styles.amountDetail}>
-                <Text style={styles.amountDetailLabel}>{t("remaining")}</Text>
-                <Text style={[styles.amountDetailValue, { color: loan.remainingBalance > 0 ? Colors.light.danger : Colors.light.success }]}>
-                  Rs. {loan.remainingBalance.toLocaleString("en-IN")}
-                </Text>
-              </View>
+              <Text style={styles.progressText}>{Math.round(progress)}% {t("auto.repaid")}</Text>
             </View>
-            {showRepayment && (
-              <View style={styles.progressContainer}>
-                <View style={styles.progressBar}>
-                  <View style={[styles.progressFill, { width: `${Math.min(progress, 100)}%` as any }]} />
-                </View>
-                <Text style={styles.progressText}>{Math.round(progress)}% {t("auto.repaid")}</Text>
+          )}
+        </View>
+
+        {loan.calculationMethod === "reducing_balance" && showRepayment && nextLedger && loan.remainingBalance > 0 && (
+          <View style={[styles.amountCard, { marginTop: 16, backgroundColor: Colors.light.card, borderColor: Colors.light.primary, borderWidth: 1 }]}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+              <Ionicons name="calculator" size={20} color={Colors.light.primary} />
+              <Text style={[styles.amountLabel, { marginBottom: 0 }]}>{t("month")}</Text>
+            </View>
+            
+            <View style={styles.formulaBox}>
+              <Text style={styles.formulaLabel}>{t("outstanding_principal")}</Text>
+              <Text style={styles.formulaValue}>Rs. {nextLedger.openingPrincipal.toLocaleString("en-IN")}</Text>
+            </View>
+            
+            <View style={styles.formulaBox}>
+              <Text style={styles.formulaLabel}>{t("monthly_interest_rate")}</Text>
+              <Text style={styles.formulaValue}>{nextLedger.interestRateApplied}%</Text>
+            </View>
+            
+            <View style={styles.formulaHighlight}>
+              <Text style={styles.formulaLabelHighlight}>{t("current_month_interest")}</Text>
+              <Text style={styles.formulaDetail}>Rs. {nextLedger.openingPrincipal.toLocaleString("en-IN")} × {nextLedger.interestRateApplied}%</Text>
+              <Text style={styles.formulaResult}>= Rs. {nextLedger.interestCharged.toLocaleString("en-IN")}</Text>
+            </View>
+
+            <View style={styles.formulaBox}>
+              <Text style={styles.formulaLabel}>{t("suggested_principal")}</Text>
+              <Text style={styles.formulaDetail}>Rs. {nextLedger.openingPrincipal.toLocaleString("en-IN")} ÷ {remainingMonths} {t("auto.mo")}</Text>
+              <Text style={styles.formulaResult}>= Rs. {nextLedger.suggestedPrincipal.toLocaleString("en-IN")}</Text>
+            </View>
+            
+            <View style={styles.formulaHighlight}>
+              <Text style={styles.formulaLabelHighlight}>{t("suggested_installment")}</Text>
+              <Text style={styles.formulaDetail}>Rs. {nextLedger.suggestedPrincipal.toLocaleString("en-IN")} + Rs. {nextLedger.interestCharged.toLocaleString("en-IN")}</Text>
+              <Text style={styles.formulaResult}>= Rs. {(nextLedger.suggestedPrincipal + nextLedger.interestCharged).toLocaleString("en-IN")}</Text>
+            </View>
+
+            {(loan.outstandingInterest || 0) > 0 && (
+              <View style={[styles.formulaBox, { backgroundColor: '#FEF2F2' }]}>
+                <Text style={[styles.formulaLabel, { color: Colors.light.danger }]}>{t("outstanding_interest_remaining")}</Text>
+                <Text style={[styles.formulaValue, { color: Colors.light.danger }]}>Rs. {(loan.outstandingInterest || 0).toLocaleString("en-IN")}</Text>
               </View>
             )}
+
+            <View style={[styles.formulaHighlight, { backgroundColor: Colors.light.primary + '10', borderTopWidth: 1, borderColor: Colors.light.primary + '30', marginTop: 8 }]}>
+              <Text style={[styles.formulaLabelHighlight, { color: Colors.light.primary }]}>{t("total_suggested_payment")}</Text>
+              {(loan.outstandingInterest || 0) > 0 && (
+                <Text style={styles.formulaDetail}>Rs. {(nextLedger.suggestedPrincipal + nextLedger.interestCharged).toLocaleString("en-IN")} + Rs. {(loan.outstandingInterest || 0).toLocaleString("en-IN")}</Text>
+              )}
+              <Text style={[styles.formulaResult, { fontSize: 18, color: Colors.light.primary }]}>
+                = Rs. {nextLedger.suggestedInstallment.toLocaleString("en-IN")}
+              </Text>
+            </View>
           </View>
         )}
 
@@ -527,7 +444,6 @@ export default function LoanDetailScreen() {
             <Text style={styles.approvalCardSub}>
               {t("auto.your_decision_will_be_forwarded")}
             </Text>
-            {renderBankForm()}
             <View style={styles.approvalButtons}>
               <Pressable style={[styles.approveBtn, { backgroundColor: Colors.light.success }]} onPress={() => setDialog("approveTreasurer")}>
                 <Ionicons name="checkmark" size={18} color="#fff" />
@@ -562,7 +478,6 @@ export default function LoanDetailScreen() {
                 {t("auto.resolution_number_is_required")}
               </Text>
             )}
-            {renderBankForm()}
             <View style={styles.approvalButtons}>
               <Pressable style={[styles.approveBtn, { backgroundColor: Colors.light.primary }]} onPress={handleApprove}>
                 <Ionicons name="checkmark" size={18} color="#fff" />
@@ -593,66 +508,75 @@ export default function LoanDetailScreen() {
 
             {showRepay && (
               <View style={styles.repayInput}>
-                {loan.hasBankLoan ? (
-                  <View style={{ gap: 10, width: "100%" }}>
-                    <View style={styles.inputRow}>
-                      <Text style={styles.rupee}>SHG Rs.</Text>
-                      <TextInput
-                        style={styles.repayField}
-                        value={shgRepayAmount}
-                        onChangeText={setShgRepayAmount}
-                        placeholder="0"
-                        placeholderTextColor={Colors.light.textMuted}
-                        keyboardType="number-pad"
-                        autoFocus
-                      />
+                <View style={styles.inputRow}>
+                  <Text style={styles.rupee}>Rs.</Text>
+                  <TextInput
+                    style={styles.repayField}
+                    value={repayAmount}
+                    onChangeText={setRepayAmount}
+                    placeholder="0"
+                    placeholderTextColor={Colors.light.textMuted}
+                    keyboardType="number-pad"
+                    autoFocus
+                  />
+                  <Pressable style={styles.repayBtn} onPress={handleRepay}>
+                    <Ionicons name="checkmark" size={20} color="#fff" />
+                  </Pressable>
+                </View>
+                {loan.calculationMethod === "reducing_balance" && repaymentPreview && previewRepayAmount > 0 && (
+                  <View style={[styles.amountCard, { marginTop: 12, backgroundColor: Colors.light.card, borderColor: Colors.light.primary, borderWidth: 1 }]}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                      <Ionicons name="eye" size={18} color={Colors.light.primary} />
+                      <Text style={[styles.amountLabel, { marginBottom: 0, fontSize: 13 }]}>{t("repayment_summary")}</Text>
                     </View>
-                    <View style={styles.inputRow}>
-                      <Text style={styles.rupee}>Bank Rs.</Text>
-                      <TextInput
-                        style={styles.repayField}
-                        value={bankRepayAmount}
-                        onChangeText={setBankRepayAmount}
-                        placeholder="0"
-                        placeholderTextColor={Colors.light.textMuted}
-                        keyboardType="number-pad"
-                      />
+                    
+                    <View style={styles.formulaBox}>
+                      <Text style={styles.formulaLabel}>{t("payment_entered")}</Text>
+                      <Text style={styles.formulaValue}>Rs. {previewRepayAmount.toLocaleString("en-IN")}</Text>
                     </View>
-                    <Pressable style={[styles.repayBtn, { width: "100%", marginTop: 8, height: 48, justifyContent: 'center', backgroundColor: Colors.light.primary, borderRadius: 14 }]} onPress={handleRepay}>
-                      <Text style={{ fontFamily: "Poppins_600SemiBold", color: "#fff", fontSize: 15, textAlign: 'center' }}>{t("save")}</Text>
-                    </Pressable>
-                  </View>
-                ) : (
-                  <View style={styles.inputRow}>
-                    <Text style={styles.rupee}>Rs.</Text>
-                    <TextInput
-                      style={styles.repayField}
-                      value={repayAmount}
-                      onChangeText={setRepayAmount}
-                      placeholder="0"
-                      placeholderTextColor={Colors.light.textMuted}
-                      keyboardType="number-pad"
-                      autoFocus
-                    />
-                    <Pressable style={styles.repayBtn} onPress={handleRepay}>
-                      <Ionicons name="checkmark" size={20} color="#fff" />
-                    </Pressable>
+                    <View style={{ alignItems: 'center', marginVertical: -4, zIndex: 10 }}><Ionicons name="arrow-down" size={16} color={Colors.light.textMuted} /></View>
+                    
+                    <View style={styles.formulaBox}>
+                      <Text style={styles.formulaLabel}>{t("interest_paid_label")}</Text>
+                      <Text style={styles.formulaValue}>Rs. {repaymentPreview.interestPaid.toLocaleString("en-IN")}</Text>
+                    </View>
+                    {(repaymentPreview.outstandingInterest > 0) && (
+                      <>
+                        <View style={{ alignItems: 'center', marginVertical: -4, zIndex: 10 }}><Ionicons name="arrow-down" size={16} color={Colors.light.textMuted} /></View>
+                        <View style={[styles.formulaBox, { backgroundColor: '#FEF2F2' }]}>
+                          <Text style={[styles.formulaLabel, { color: Colors.light.danger }]}>{t("outstanding_interest_remaining")}</Text>
+                          <Text style={[styles.formulaValue, { color: Colors.light.danger }]}>Rs. {repaymentPreview.outstandingInterest.toLocaleString("en-IN")}</Text>
+                        </View>
+                      </>
+                    )}
+                    <View style={{ alignItems: 'center', marginVertical: -4, zIndex: 10 }}><Ionicons name="arrow-down" size={16} color={Colors.light.textMuted} /></View>
+                    
+                    <View style={styles.formulaBox}>
+                      <Text style={styles.formulaLabel}>{t("principal_paid_label")}</Text>
+                      <Text style={styles.formulaValue}>Rs. {repaymentPreview.principalPaid.toLocaleString("en-IN")}</Text>
+                    </View>
+                    <View style={{ alignItems: 'center', marginVertical: -4, zIndex: 10 }}><Ionicons name="arrow-down" size={16} color={Colors.light.textMuted} /></View>
+                    
+                    <View style={[styles.formulaHighlight, { backgroundColor: Colors.light.primary + '10' }]}>
+                      <Text style={[styles.formulaLabelHighlight, { color: Colors.light.primary }]}>{t("new_remaining_principal")}</Text>
+                      <Text style={[styles.formulaResult, { color: Colors.light.primary }]}>Rs. {repaymentPreview.closingPrincipal.toLocaleString("en-IN")}</Text>
+                    </View>
                   </View>
                 )}
               </View>
             )}
 
-            {passbookEntries.length > 0 ? (
-              passbookEntries.map((r, i) => (
+            {displayEntries.length > 0 ? (
+              displayEntries.map((r, i) => (
                 <View key={r.id} style={[styles.repaymentItem, { flexDirection: 'column', alignItems: 'stretch' }]}>
                   <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                      <Ionicons name="return-down-forward" size={16} color={Colors.light.success} />
-                      <Text style={styles.repaymentDate}>{new Date(r.date).toLocaleDateString("en-IN")}</Text>
+                      <Ionicons name={isReducingBalance && r.type === "disbursement" ? "wallet" : "return-down-forward"} size={16} color={Colors.light.success} />
+                      <Text style={styles.repaymentDate}>{new Date(isReducingBalance ? r.transactionDate : r.date).toLocaleDateString("en-IN")}</Text>
                     </View>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                      <Text style={styles.repaymentAmount}>Rs. {r.amount.toLocaleString("en-IN")}</Text>
-                      {isPresident && (
+                      <Text style={styles.repaymentAmount}>Rs. {isReducingBalance ? r.paymentReceived.toLocaleString("en-IN") : r.amount.toLocaleString("en-IN")}</Text>
+                      {isPresident && !isReducingBalance && (
                         <Pressable onPress={() => setDeleteRepaymentId(r.id)}>
                           <Ionicons name="trash-outline" size={16} color={Colors.light.danger} />
                         </Pressable>
@@ -661,17 +585,27 @@ export default function LoanDetailScreen() {
                   </View>
 
                   <View style={{ flexDirection: 'row', justifyContent: 'space-between', backgroundColor: Colors.light.background, padding: 8, borderRadius: 8 }}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={{ fontFamily: "Poppins_600SemiBold", fontSize: 11, color: Colors.light.text }}>SHG Portion</Text>
-                      <Text style={{ fontFamily: "Poppins_400Regular", fontSize: 11, color: Colors.light.textSecondary }}>Paid: Rs. {r.resolvedShg.toLocaleString("en-IN")}</Text>
-                      <Text style={{ fontFamily: "Poppins_400Regular", fontSize: 11, color: Colors.light.textSecondary }}>Rem: Rs. {r.runShgRem.toLocaleString("en-IN")}</Text>
-                    </View>
-                    {loan.hasBankLoan && (
+                    {isReducingBalance ? (
                       <View style={{ flex: 1 }}>
-                        <Text style={{ fontFamily: "Poppins_600SemiBold", fontSize: 11, color: Colors.light.primary }}>Bank Portion</Text>
-                        <Text style={{ fontFamily: "Poppins_400Regular", fontSize: 11, color: Colors.light.textSecondary }}>Paid: Rs. {r.resolvedBank.toLocaleString("en-IN")}</Text>
-                        <Text style={{ fontFamily: "Poppins_400Regular", fontSize: 11, color: Colors.light.textSecondary }}>Rem: Rs. {r.runBankRem.toLocaleString("en-IN")}</Text>
+                        <Text style={{ fontFamily: "Poppins_600SemiBold", fontSize: 11, color: Colors.light.text }}>
+                          {r.type === 'disbursement' ? (t("ledger_loan_disbursed") || "Loan Disbursed") : (t("ledger_repayment") || "Repayment")}
+                        </Text>
+                        {r.type === 'repayment' && (
+                          <>
+                            <Text style={{ fontFamily: "Poppins_400Regular", fontSize: 11, color: Colors.light.textSecondary }}>{t("ledger_paid") || "Paid"}: Rs. {r.paymentReceived.toLocaleString("en-IN")}</Text>
+                            <Text style={{ fontFamily: "Poppins_400Regular", fontSize: 11, color: Colors.light.textSecondary }}>{t("ledger_principal") || "Principal"}: Rs. {r.principalPaid.toLocaleString("en-IN")} | {t("ledger_interest") || "Interest"}: Rs. {r.interestPaid.toLocaleString("en-IN")}</Text>
+                          </>
+                        )}
+                        <Text style={{ fontFamily: "Poppins_400Regular", fontSize: 11, color: Colors.light.textSecondary }}>{t("ledger_balance") || "Balance"}: Rs. {r.closingPrincipal.toLocaleString("en-IN")}</Text>
                       </View>
+                    ) : (
+                      <>
+                        <View style={{ flex: 1 }}>
+                          <Text style={{ fontFamily: "Poppins_600SemiBold", fontSize: 11, color: Colors.light.text }}>Repayment</Text>
+                          <Text style={{ fontFamily: "Poppins_400Regular", fontSize: 11, color: Colors.light.textSecondary }}>{t("ledger_paid") || "Paid"}: Rs. {r.amount.toLocaleString("en-IN")}</Text>
+                          <Text style={{ fontFamily: "Poppins_400Regular", fontSize: 11, color: Colors.light.textSecondary }}>Rem: Rs. {r.runRem.toLocaleString("en-IN")}</Text>
+                        </View>
+                      </>
                     )}
                   </View>
                   {r.remarks && (
@@ -1162,5 +1096,47 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: Colors.light.textMuted,
     marginLeft: 8,
+  },
+  formulaBox: {
+    backgroundColor: Colors.light.inputBg,
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 8,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center'
+  },
+  formulaHighlight: {
+    backgroundColor: '#F0F9FF',
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 8,
+  },
+  formulaLabel: {
+    fontFamily: "Poppins_500Medium",
+    fontSize: 13,
+    color: Colors.light.textSecondary,
+  },
+  formulaLabelHighlight: {
+    fontFamily: "Poppins_600SemiBold",
+    fontSize: 13,
+    color: Colors.light.text,
+    marginBottom: 4
+  },
+  formulaValue: {
+    fontFamily: "Poppins_600SemiBold",
+    fontSize: 14,
+    color: Colors.light.text,
+  },
+  formulaDetail: {
+    fontFamily: "Poppins_400Regular",
+    fontSize: 13,
+    color: Colors.light.textSecondary,
+  },
+  formulaResult: {
+    fontFamily: "Poppins_600SemiBold",
+    fontSize: 15,
+    color: Colors.light.text,
+    marginTop: 4
   },
 });

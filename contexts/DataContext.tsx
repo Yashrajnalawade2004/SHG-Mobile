@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, useMemo, ReactNode, useCallback, useEffect } from "react";
 import { useAuth } from "./AuthContext";
 import { apiGet, apiPost, apiPatch, apiPut, apiDelete } from "@/lib/api";
-import { resolveRepaymentAmounts, calculateShgTotal, calculateBankTotal } from "../shared/accounting";
+import { resolveRepaymentAmounts, calculateShgTotal } from "../shared/accounting";
 
 export interface Meeting {
   id: string;
@@ -60,6 +60,10 @@ export interface Loan {
   interest: number;
   duration: number;
   remainingBalance: number;
+  calculationMethod?: "legacy" | "reducing_balance";
+  totalPrincipalPaid?: number;
+  totalInterestPaid?: number;
+  outstandingInterest?: number;
   status: LoanStatus;
   treasurerActionBy?: string;
   treasurerActionAt?: string;
@@ -108,6 +112,35 @@ export interface AffiliatedBank {
   isActive: boolean;
   createdBy: string;
   createdAt: string;
+}
+
+export interface GroupBankLoan {
+  id: string;
+  groupId: string;
+  bankName: string;
+  branch?: string;
+  accountNumber?: string;
+  sanctionDate: string;
+  amount: number;
+  annualInterestRate: number;
+  durationMonths: number;
+  repaymentStartDate?: string;
+  remarks?: string;
+  status: string;
+  createdBy: string;
+  createdAt: string;
+}
+
+export interface BankLoanAllocation {
+  id: string;
+  bankLoanId: string;
+  memberId: string;
+  allocatedPrincipal: number;
+  totalPrincipalPaid: number;
+  totalInterestPaid: number;
+  outstandingBalance: number;
+  outstandingInterest: number;
+  status: string;
 }
 
 export interface DurationRule {
@@ -180,6 +213,8 @@ interface DataContextValue {
   loans: Loan[];
   loanRepayments: LoanRepayment[];
   affiliatedBanks: AffiliatedBank[];
+  groupBankLoans: GroupBankLoan[];
+  bankLoanAllocations: BankLoanAllocation[];
   groupMembers: User[];
   groupRules: string;
   groupSettings: GroupSettings;
@@ -196,16 +231,10 @@ interface DataContextValue {
   requestLoan: (data: {
     amount: number;
     duration: number;
-    hasBankLoan?: boolean;
-    bankId?: string;
-    bankLoanAmount?: number;
-    bankInterestRate?: number;
-    bankDuration?: number;
-    bankLoanRemarks?: string;
   }) => Promise<string | null>;
-  treasurerApproveLoan: (id: string, bankDetails?: any) => Promise<void>;
+  treasurerApproveLoan: (id: string) => Promise<void>;
   treasurerRejectLoan: (id: string, reason?: string) => Promise<void>;
-  approveLoan: (id: string, resolutionNo: string, meetingId?: string, bankDetails?: any) => Promise<void>;
+  approveLoan: (id: string, resolutionNo: string, meetingId?: string) => Promise<void>;
   rejectLoan: (id: string, reason?: string) => Promise<void>;
   deleteLoan: (id: string) => Promise<void>;
   addRepayment: (loanId: string, data: { shgAmount: number; bankAmount: number; remarks?: string }) => Promise<void>;
@@ -218,6 +247,11 @@ interface DataContextValue {
   createBank: (data: Omit<AffiliatedBank, "id" | "createdAt" | "createdBy" | "isActive">) => Promise<AffiliatedBank>;
   updateBank: (id: string, data: Partial<AffiliatedBank>) => Promise<void>;
   deactivateBank: (id: string) => Promise<void>;
+  createGroupBankLoan: (data: Omit<GroupBankLoan, "id" | "createdAt" | "status" | "createdBy">) => Promise<void>;
+  updateGroupBankLoan: (id: string, data: Partial<GroupBankLoan>) => Promise<void>;
+  closeGroupBankLoan: (id: string) => Promise<void>;
+  allocateBankLoanFunds: (bankLoanId: string, allocations: { memberId: string; allocatedPrincipal: number }[]) => Promise<void>;
+  recordBankLoanRepayment: (allocationId: string, data: { amount: number; remarks?: string }) => Promise<void>;
   refreshData: () => Promise<void>;
 }
 
@@ -230,6 +264,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [loans, setLoans] = useState<Loan[]>([]);
   const [loanRepayments, setLoanRepayments] = useState<LoanRepayment[]>([]);
   const [affiliatedBanks, setAffiliatedBanks] = useState<AffiliatedBank[]>([]);
+  const [groupBankLoans, setGroupBankLoans] = useState<GroupBankLoan[]>([]);
+  const [bankLoanAllocations, setBankLoanAllocations] = useState<BankLoanAllocation[]>([]);
   const [groupMembers, setGroupMembers] = useState<User[]>([]);
   const [groupRules, setGroupRules] = useState("");
   const [groupSettings, setGroupSettings] = useState<GroupSettings>(DEFAULT_SETTINGS);
@@ -248,6 +284,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
       apiGet<GroupSettings>(`/api/groups/${gid}/settings`),
       apiGet<GroupSummary>(`/api/groups/${gid}/summary`),
       apiGet<AffiliatedBank[]>(`/api/groups/${gid}/banks`),
+      apiGet<GroupBankLoan[]>(`/api/groups/${gid}/bank-loans`),
+      apiGet<BankLoanAllocation[]>(`/api/groups/${gid}/bank-loan-allocations`),
     ]);
     if (m.status === "fulfilled") setMeetings(m.value);
     if (p.status === "fulfilled") setPayments(p.value);
@@ -258,6 +296,26 @@ export function DataProvider({ children }: { children: ReactNode }) {
     if (settings.status === "fulfilled") setGroupSettings(settings.value);
     if (summary.status === "fulfilled") setGroupSummary(summary.value);
     if (banks.status === "fulfilled") setAffiliatedBanks(banks.value);
+    
+    // We destructured to banks, but we added two more endpoints to the Promise.allSettled array.
+    // m, p, l, r, members, rules, settings, summary, banks, gbl, bla
+    // Wait, Promise.allSettled returns an array. The arguments array will have it at indices 9 and 10.
+    const res = await Promise.allSettled([
+      apiGet<Meeting[]>(`/api/groups/${gid}/meetings`),
+      apiGet<Payment[]>(`/api/groups/${gid}/payments`),
+      apiGet<Loan[]>(`/api/groups/${gid}/loans`),
+      apiGet<LoanRepayment[]>(`/api/groups/${gid}/repayments`),
+      apiGet<User[]>(`/api/groups/${gid}/members`),
+      apiGet<{ rules: string }>(`/api/groups/${gid}/rules`),
+      apiGet<GroupSettings>(`/api/groups/${gid}/settings`),
+      apiGet<GroupSummary>(`/api/groups/${gid}/summary`),
+      apiGet<AffiliatedBank[]>(`/api/groups/${gid}/banks`),
+      apiGet<GroupBankLoan[]>(`/api/groups/${gid}/bank-loans`),
+      apiGet<BankLoanAllocation[]>(`/api/groups/${gid}/bank-loan-allocations`),
+    ]);
+    const [, , , , , , , , banksRes, gbl, bla] = res;
+    if (gbl && gbl.status === "fulfilled") setGroupBankLoans(gbl.value);
+    if (bla && bla.status === "fulfilled") setBankLoanAllocations(bla.value);
     const failures = [m, p, l, r, members, rules, settings, summary, banks].filter((res) => res.status === "rejected");
     if (failures.length > 0) {
       console.warn(`${failures.length} data endpoint(s) failed to load:`, failures.map((f) => (f as PromiseRejectedResult).reason?.message));
@@ -348,8 +406,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
     }
   }, [user?.groupId]);
 
-  const treasurerApproveLoan = useCallback(async (id: string, bankDetails?: any) => {
-    const updated = await apiPatch<Loan>(`/api/loans/${id}/treasurer-approve`, bankDetails || {});
+  const treasurerApproveLoan = useCallback(async (id: string) => {
+    const updated = await apiPatch<Loan>(`/api/loans/${id}/treasurer-approve`, {});
     setLoans((prev) => prev.map((l) => (l.id === id ? updated : l)));
   }, []);
 
@@ -358,8 +416,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
     setLoans((prev) => prev.map((l) => (l.id === id ? updated : l)));
   }, []);
 
-  const approveLoan = useCallback(async (id: string, resolutionNo: string, meetingId?: string, bankDetails?: any) => {
-    const updated = await apiPatch<Loan>(`/api/loans/${id}/approve`, { resolutionNo, meetingId, ...(bankDetails || {}) });
+  const approveLoan = useCallback(async (id: string, resolutionNo: string, meetingId?: string) => {
+    const updated = await apiPatch<Loan>(`/api/loans/${id}/approve`, { resolutionNo, meetingId });
     setLoans((prev) => prev.map((l) => (l.id === id ? updated : l)));
   }, []);
 
@@ -375,13 +433,20 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   const addRepayment = useCallback(async (loanId: string, data: { shgAmount: number; bankAmount: number; remarks?: string }) => {
     const total = data.shgAmount + data.bankAmount;
-    const repayment = await apiPost<LoanRepayment>(`/api/loans/${loanId}/repayments`, {
+    const response = await apiPost<{ success: boolean; loan: Loan; repayment: LoanRepayment }>(`/api/loans/${loanId}/repayments`, {
       amount: total,
       shgAmount: data.shgAmount,
       bankAmount: data.bankAmount,
       remarks: data.remarks,
     });
+    const repayment = response.repayment || (response as unknown as LoanRepayment);
     setLoanRepayments((prev) => [...prev, repayment]);
+    
+    // Also update the loan optimistically
+    if (response.loan) {
+      setLoans((prev) => prev.map(l => l.id === loanId ? response.loan : l));
+      return;
+    }
     // Optimistically update SHG balance
     if (data.shgAmount > 0) {
       setLoans((prev) => prev.map((l) => {
@@ -390,16 +455,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
         const allShgRepaid = [...loanRepayments.filter((r) => r.loanId === loanId), repayment]
           .reduce((s, r) => s + resolveRepaymentAmounts(r).shgAmount, 0);
         return { ...l, remainingBalance: Math.max(0, shgTotal - allShgRepaid) };
-      }));
-    }
-    // Optimistically update bank balance
-    if (data.bankAmount > 0) {
-      setLoans((prev) => prev.map((l) => {
-        if (l.id !== loanId || !l.hasBankLoan) return l;
-        const bankTotal = calculateBankTotal(l);
-        const allBankRepaid = [...loanRepayments.filter((r) => r.loanId === loanId), repayment]
-          .reduce((s, r) => s + resolveRepaymentAmounts(r).bankAmount, 0);
-        return { ...l, bankRemainingBalance: Math.max(0, bankTotal - allBankRepaid) };
       }));
     }
   }, [loanRepayments]);
@@ -440,29 +495,57 @@ export function DataProvider({ children }: { children: ReactNode }) {
     setAffiliatedBanks((prev) => prev.map((b) => (b.id === id ? updated : b)));
   }, []);
 
-  const deactivateBank = useCallback(async (id: string) => {
+  const deactivateBank = async (id: string) => {
     await apiPatch(`/api/banks/${id}`, { isActive: false });
-    setAffiliatedBanks((prev) => prev.map((b) => (b.id === id ? { ...b, isActive: false } : b)));
-  }, []);
+    await loadData();
+  };
+
+  const createGroupBankLoan = async (data: any) => {
+    if (!user?.groupId) return;
+    await apiPost(`/api/groups/${user.groupId}/bank-loans`, data);
+    await loadData();
+  };
+  
+  const updateGroupBankLoan = async (id: string, data: any) => {
+    await apiPatch(`/api/bank-loans/${id}`, data);
+    await loadData();
+  };
+  
+  const closeGroupBankLoan = async (id: string) => {
+    await apiPatch(`/api/bank-loans/${id}/close`, {});
+    await loadData();
+  };
+  
+  const allocateBankLoanFunds = async (bankLoanId: string, allocations: any) => {
+    await apiPost(`/api/bank-loans/${bankLoanId}/allocations`, { allocations });
+    await loadData();
+  };
+  
+  const recordBankLoanRepayment = async (allocationId: string, data: any) => {
+    await apiPost(`/api/bank-loan-allocations/${allocationId}/repayments`, data);
+    await loadData();
+  };
 
   const value = useMemo(
     () => ({
-      meetings, payments, loans, loanRepayments, affiliatedBanks, groupMembers, groupRules, groupSettings, groupSummary,
+      meetings, payments, loans, loanRepayments, affiliatedBanks, groupBankLoans, bankLoanAllocations, groupMembers, groupRules, groupSettings, groupSummary,
       createMeeting, updateMeeting, cancelMeeting, deleteMeeting,
       declarePayment, verifyPayment, reopenPayment, deletePayment, uploadQrCode,
       requestLoan, treasurerApproveLoan, treasurerRejectLoan, approveLoan, rejectLoan, deleteLoan,
       addRepayment, deleteRepayment,
       assignTreasurer,
       createBank, updateBank, deactivateBank,
+      createGroupBankLoan, updateGroupBankLoan, closeGroupBankLoan, allocateBankLoanFunds, recordBankLoanRepayment,
       updateGroupRules, updateGroupSettings, updateGroupInfo, updateMember, refreshData: loadData,
     }),
-    [meetings, payments, loans, loanRepayments, affiliatedBanks, groupMembers, groupRules, groupSettings, groupSummary,
+    [meetings, payments, loans, loanRepayments, affiliatedBanks, groupBankLoans, bankLoanAllocations, groupMembers, groupRules, groupSettings, groupSummary,
       createMeeting, updateMeeting, cancelMeeting, deleteMeeting,
       declarePayment, verifyPayment, reopenPayment, deletePayment, uploadQrCode,
       requestLoan, treasurerApproveLoan, treasurerRejectLoan, approveLoan, rejectLoan, deleteLoan,
       addRepayment, deleteRepayment,
       assignTreasurer,
       createBank, updateBank, deactivateBank,
+      createGroupBankLoan, updateGroupBankLoan, closeGroupBankLoan, allocateBankLoanFunds, recordBankLoanRepayment,
       updateGroupRules, updateGroupSettings, updateGroupInfo, updateMember, loadData],
   );
 
