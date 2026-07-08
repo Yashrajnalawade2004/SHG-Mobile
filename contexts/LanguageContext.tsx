@@ -5,6 +5,17 @@ import { apiPatch, getToken } from "@/lib/api";
 export type Language = "en" | "mr";
 
 export const translations: Record<string, any> = {
+
+
+
+  "qr_modal_title": { "en": "Pay via QR", "mr": "QR द्वारे भरा" },
+  "qr_disclaimer": { "en": "After making the payment, please inform the President or Treasurer. Your repayment will be recorded only after they verify the payment.", "mr": "पेमेंट केल्यानंतर, कृपया अध्यक्ष किंवा खजिनदाराला कळवा. पेमेंटची खात्री झाल्यानंतरच तुमची परतफेड नोंदवली जाईल." },
+  "qr_not_configured": { "en": "The SHG has not yet configured a payment QR code. Please contact the President.", "mr": "बचत गटाने अद्याप पेमेंट QR कोड सेट केलेला नाही. कृपया अध्यक्षांशी संपर्क साधा." },
+  "outstanding_interest_due": { "en": "Outstanding Interest", "mr": "थकबाकी व्याज" },
+  "total_payable_this_month": { "en": "Total Payable This Month", "mr": "या महिन्याची एकूण देय रक्कम" },
+  "recommended_monthly_payment": { "en": "Recommended Monthly Payment", "mr": "शिफारस केलेला मासिक हप्ता" },
+  "monthly_installment": { "en": "Monthly Installment", "mr": "मासिक हप्ता" },
+
   "bankLoans": { "en": "Bank Loans", "mr": "बँक कर्ज" },
   "createBankLoan": { "en": "Create Bank Loan", "mr": "बँक कर्ज तयार करा" },
   "bankName": { "en": "Bank Name", "mr": "बँकेचे नाव" },
@@ -32,6 +43,25 @@ export const translations: Record<string, any> = {
   "ledger_closing_balance": { "en": "Closing Balance", "mr": "अंतिम शिल्लक" },
   "ledger_installment": { "en": "Installment", "mr": "हप्ता" },
   "reducing_balance": { "en": "Reducing Balance", "mr": "कमी होणारी शिल्लक" },
+  "dashboard_total_loans_disbursed": { "en": "Total Loans Disbursed", "mr": "एकूण वितरित कर्ज" },
+  "dashboard_principal_recovered": { "en": "Principal Recovered", "mr": "वसूल झालेले मुद्दल" },
+  "dashboard_interest_collected": { "en": "Interest Collected", "mr": "जमा झालेले व्याज" },
+  "total_outstanding": { "en": "Total Outstanding", "mr": "एकूण थकबाकी" },
+  "dashboard_completed_loans": { "en": "Completed Loans", "mr": "पूर्ण झालेली कर्जे" },
+  "principal_portion": { "en": "Principal Portion", "mr": "मुद्दलाचा भाग" },
+  "interest_portion": { "en": "Interest Portion", "mr": "व्याजाचा भाग" },
+  "last_payment_date": { "en": "Last Payment Date", "mr": "शेवटच्या भरण्याची तारीख" },
+  "last_payment_amount": { "en": "Last Payment Amount", "mr": "शेवटच्या भरण्याची रक्कम" },
+  "next_recommended_payment": { "en": "Next Recommended Payment", "mr": "पुढील शिफारस केलेला भरणा" },
+  "loan_status": { "en": "Loan Status", "mr": "कर्जाची स्थिती" },
+  "receipt_number": { "en": "Receipt Number", "mr": "पावती क्रमांक" },
+  "qr_payment_warning": { "en": "Note: Payment via QR does not automatically update your loan balance. The President or Treasurer must verify and record the repayment.", "mr": "टीप: QR द्वारे भरणा केल्याने कर्जाची शिल्लक आपोआप अपडेट होत नाही. अध्यक्ष किंवा खजिनदारांनी या भरण्याची पडताळणी करून नोंद करणे आवश्यक आहे." },
+  "export_passbook": { "en": "Export Passbook", "mr": "पासबुक डाउनलोड करा" },
+  "passbook": { "en": "Passbook", "mr": "पासबुक" },
+  "loan_summary": { "en": "Loan Summary", "mr": "कर्जाचा सारांश" },
+  "current_month_summary": { "en": "Current Month Summary", "mr": "चालू महिन्याचा सारांश" },
+  "pay_via_qr": { "en": "Pay via QR", "mr": "QR द्वारे भरा" },
+  "total_amount_to_pay": { "en": "Total Amount to Pay", "mr": "भरण्याची एकूण रक्कम" },
 
   "common": {
     "pdf_status_completed": { "en": "Completed", "mr": "पूर्ण झाले" },
@@ -138,12 +168,12 @@ export const translations: Record<string, any> = {
     "pdf_president_signature": { "en": "President Signature", "mr": "अध्यक्षांची स्वाक्षरी" },
     "pdf_treasurer_signature": { "en": "Treasurer Signature", "mr": "खजिनदाराची स्वाक्षरी" },
     "pdf_detailed_transactions": { "en": "Detailed Transactions", "mr": "तपशीलवार व्यवहार" },
-    "pdf_monthly_installment": { "en": "Recommended Monthly Payment", "mr": "शिफारस केलेला मासिक भरणा" },
+    "pdf_monthly_installment": { "en": "Monthly Payment", "mr": "शिफारस केलेला मासिक भरणा" },
     "outstanding_principal": { "en": "Outstanding Principal", "mr": "थकीत मुद्दल" },
     "monthly_interest_rate": { "en": "Monthly Interest Rate", "mr": "मासिक व्याजदर" },
     "current_month_interest": { "en": "Current Month Interest", "mr": "चालू महिन्याचे व्याज" },
     "suggested_principal": { "en": "Suggested Principal", "mr": "सुचवलेले मुद्दल" },
-    "suggested_installment": { "en": "Recommended Monthly Payment", "mr": "शिफारस केलेला मासिक भरणा" },
+    "suggested_installment": { "en": "Monthly Payment", "mr": "शिफारस केलेला मासिक भरणा" },
     "total_suggested_payment": { "en": "Total Suggested Payment", "mr": "एकूण सुचवलेला भरणा" },
     "interest_due": { "en": "Interest Due", "mr": "देय व्याज" },
     "principal_reduction": { "en": "Principal Reduction", "mr": "मुद्दल कपात" },
@@ -422,7 +452,17 @@ export const translations: Record<string, any> = {
       "mr": "आमंत्रण कोड सापडला नाही"
     }
   },
-  "dashboard": {
+    "dashboard": {
+    "monthly_loan_reminder": { "en": "Monthly Loan Repayment Due", "mr": "मासिक कर्ज हप्ता देय" },
+    "multiple_active_loans": { "en": "Multiple Active Loans", "mr": "एकाधिक सक्रिय कर्ज" },
+    "dismiss": { "en": "Dismiss", "mr": "काढून टाका" },
+    "total_savings": { "en": "Total Savings", "mr": "एकूण बचत" },
+    "current_cash_balance": { "en": "Current Cash Balance", "mr": "सध्याची रोख शिल्लक" },
+    "total_principal_disbursed": { "en": "Total Principal Disbursed", "mr": "वाटप केलेले एकूण मुद्दल" },
+    "principal_collected": { "en": "Principal Collected", "mr": "जमा झालेले मुद्दल" },
+    "interest_collected": { "en": "Interest Collected", "mr": "जमा झालेले व्याज" },
+    "outstanding_principal": { "en": "Outstanding Principal", "mr": "थकबाकी मुद्दल" },
+    "outstanding_interest": { "en": "Outstanding Interest", "mr": "थकबाकी व्याज" },
     "mic_error_2": { "en": "Failed to initialize microphone for recording. Please check permissions.", "mr": "रेकॉर्डिंगसाठी माइक सुरू करण्यात अयशस्वी. कृपया परवानगी तपासा." },
     "dashboard": {
       "en": "Dashboard",
@@ -1368,7 +1408,15 @@ export const translations: Record<string, any> = {
       "en": "Group",
       "mr": "गट"
     },
-    "history": {
+      "history": {
+    "loan_repayment": { "en": "Loan Repayment", "mr": "कर्ज परतफेड" },
+    "amount_paid": { "en": "Amount Paid", "mr": "भरलेली रक्कम" },
+    "principal_portion": { "en": "Principal Portion", "mr": "मुद्दल रक्कम" },
+    "interest_portion": { "en": "Interest Portion", "mr": "व्याज रक्कम" },
+    "remaining_principal": { "en": "Remaining Principal", "mr": "उर्वरित मुद्दल" },
+    "receipt_number": { "en": "Receipt No", "mr": "पावती क्रमांक" },
+    "recorded_by": { "en": "Recorded By", "mr": "नोंदणीकृत" },
+
       "en": "History",
       "mr": "इतिहास"
     },
@@ -1830,7 +1878,7 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
   }, []);
 
   // Pre-calculate flattened translations once
-  const flattenedTranslations = useMemo(() => {
+  const flattenedTranslations = (() => {
     const flat: Record<string, any> = {};
     const traverse = (obj: any) => {
       for (const k in obj) {
@@ -1845,11 +1893,13 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
     };
     traverse(translations);
     return flat;
-  }, []);
+  })();
 
   const t = useCallback(
     (key: string): string => {
-      // First try exact path
+      const originalKey = key;
+      const initialLanguage = language;
+
       const keys = key.split('.');
       let result: any = translations;
       let found = true;
@@ -1863,20 +1913,28 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
       }
 
       if (found && result && typeof result === 'object' && result[language]) {
+        console.log({ key: originalKey, language: initialLanguage, resolvedValue: result[language], resolutionType: 'nested_exact_match' });
         return result[language];
       }
 
-      // If exact path not found, try the flattened map (case-insensitive)
       const lastKey = keys[keys.length - 1].toLowerCase();
       const fullKey = key.toLowerCase();
       const flatResult = flattenedTranslations[lastKey] || flattenedTranslations[fullKey];
       if (flatResult && flatResult[language]) {
+        console.log({ key: originalKey, language: initialLanguage, resolvedValue: flatResult[language], resolutionType: 'flattened_fallback' });
         return flatResult[language];
       }
 
-      return key; // Fallback to key if not found
+      if (key.includes('_')) {
+        const formatted = key.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+        console.log({ key: originalKey, language: initialLanguage, resolvedValue: formatted, resolutionType: 'formatter_fallback' });
+        return formatted;
+      }
+
+      console.log({ key: originalKey, language: initialLanguage, resolvedValue: undefined, resolutionType: 'unresolved_fallback_to_key' });
+      return key;
     },
-    [language, flattenedTranslations],
+    [language, flattenedTranslations]
   );
 
   const value = useMemo(

@@ -217,6 +217,8 @@ export interface IStorage {
   deletePayment(id: string): Promise<void>;
 
   getLoansByGroupId(groupId: string): Promise<Loan[]>;
+  getLoanLedger(loanId: string): Promise<schema.LoanLedgerEntry[]>;
+  getLoanLedgerByGroupId(groupId: string): Promise<schema.LoanLedgerEntry[]>;
   getLoansForMember(groupId: string, memberId: string): Promise<Loan[]>;
   getLoanById(id: string): Promise<Loan | undefined>;
   createLoan(loan: Omit<Loan, "id">): Promise<Loan>;
@@ -227,6 +229,11 @@ export interface IStorage {
   getRepaymentsByGroupId(groupId: string): Promise<LoanRepayment[]>;
   getRepaymentById(id: string): Promise<LoanRepayment | undefined>;
   createRepayment(repayment: Omit<LoanRepayment, "id">): Promise<LoanRepayment>;
+  recordLoanRepayment(
+    repayment: Omit<LoanRepayment, "id">,
+    ledger: Omit<schema.LoanLedgerEntry, "id">,
+    loanUpdate: Partial<Loan>
+  ): Promise<LoanRepayment>;
   deleteRepayment(id: string): Promise<void>;
 
   getGroupSettings(groupId: string): Promise<GroupSettings>;
@@ -392,6 +399,12 @@ export class MemStorage implements IStorage {
     this.payments.delete(id);
   }
 
+  async getLoanLedger(loanId: string): Promise<schema.LoanLedgerEntry[]> {
+    return [];
+  }
+  async getLoanLedgerByGroupId(groupId: string): Promise<schema.LoanLedgerEntry[]> {
+    return [];
+  }
   async getLoansByGroupId(groupId: string): Promise<Loan[]> {
     return Array.from(this.loans.values()).filter((l) => l.groupId === groupId) as unknown as Loan[];
   }
@@ -441,6 +454,16 @@ export class MemStorage implements IStorage {
 
   async getRepaymentById(id: string): Promise<LoanRepayment | undefined> {
     return this.repayments.get(id);
+  }
+
+  async recordLoanRepayment(
+    repaymentData: Omit<LoanRepayment, "id">,
+    ledgerData: Omit<schema.LoanLedgerEntry, "id">,
+    loanUpdate: Partial<Loan>
+  ): Promise<LoanRepayment> {
+    const rep = await this.createRepayment(repaymentData);
+    await this.updateLoan(repaymentData.loanId, loanUpdate);
+    return rep;
   }
 
   async createRepayment(data: Omit<LoanRepayment, "id">): Promise<LoanRepayment> {
@@ -636,6 +659,17 @@ export class DatabaseStorage implements IStorage {
     await this.db.delete(schema.payments).where(eq(schema.payments.id, id));
   }
 
+  async getLoanLedger(loanId: string): Promise<schema.LoanLedgerEntry[]> {
+    return await this.db.select().from(schema.loanLedger).where(eq(schema.loanLedger.loanId, loanId));
+  }
+  async getLoanLedgerByGroupId(groupId: string): Promise<schema.LoanLedgerEntry[]> {
+    const ledgers = await this.db
+      .select({ ledger: schema.loanLedger })
+      .from(schema.loanLedger)
+      .innerJoin(schema.loans, eq(schema.loanLedger.loanId, schema.loans.id))
+      .where(eq(schema.loans.groupId, groupId));
+    return ledgers.map(l => l.ledger);
+  }
   async getLoansByGroupId(groupId: string): Promise<Loan[]> {
     const rows = await this.db.select().from(schema.loans).where(eq(schema.loans.groupId, groupId));
     return rows as Loan[];
@@ -691,6 +725,36 @@ export class DatabaseStorage implements IStorage {
   async getRepaymentById(id: string): Promise<LoanRepayment | undefined> {
     const rows = await this.db.select().from(schema.loanRepayments).where(eq(schema.loanRepayments.id, id));
     return rows[0] as LoanRepayment | undefined;
+  }
+
+  async recordLoanRepayment(
+    repaymentData: Omit<LoanRepayment, "id">,
+    ledgerData: Omit<schema.LoanLedgerEntry, "id">,
+    loanUpdate: Partial<Loan>
+  ): Promise<LoanRepayment> {
+    const repId = randomUUID();
+    const ledgerId = randomUUID();
+    
+    await this.db.transaction(async (tx) => {
+      // Insert repayment
+      const dbRepayment = {
+        ...repaymentData,
+        date: new Date(repaymentData.date),
+        id: repId
+      };
+      await tx.insert(schema.loanRepayments).values(dbRepayment);
+      
+      // Insert ledger entry
+      await tx.insert(schema.loanLedger).values({ ...ledgerData, id: ledgerId });
+      
+      // Update loan
+      await tx.update(schema.loans)
+        .set(loanUpdate)
+        .where(eq(schema.loans.id, repaymentData.loanId));
+    });
+
+    const rows = await this.db.select().from(schema.loanRepayments).where(eq(schema.loanRepayments.id, repId));
+    return rows[0] as unknown as LoanRepayment;
   }
 
   async createRepayment(data: Omit<LoanRepayment, "id">): Promise<LoanRepayment> {

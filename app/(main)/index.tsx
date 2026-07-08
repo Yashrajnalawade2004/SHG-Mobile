@@ -1,3 +1,4 @@
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { View, Text, StyleSheet, ScrollView, Pressable, Platform, RefreshControl, Animated } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -29,8 +30,28 @@ export default function DashboardScreen() {
   const insets = useSafeAreaInsets();
   const { user, group, isPresident, isTreasurer } = useAuth();
   const { t, language } = useLanguage();
-  const { meetings, payments, loans, groupMembers, refreshData, groupSummary, groupSettings } = useData();
+  const { meetings, payments, loans, loanRepayments, groupMembers, refreshData, groupSummary, groupSettings } = useData();
   const [refreshing, setRefreshing] = useState(false);
+
+  const [dismissedSavings, setDismissedSavings] = useState(false);
+  const [dismissedLoan, setDismissedLoan] = useState(false);
+
+  useEffect(() => {
+    const checkDismissals = async () => {
+      const now = new Date();
+      const currentMonthStr = `${now.getFullYear()}-${now.getMonth()}`;
+      const currentDayStr = `${now.getFullYear()}-${now.getMonth()}-${now.getDate()}`;
+      try {
+        const s = await AsyncStorage.getItem(`dismissed_savings_${currentMonthStr}`);
+        if (s) setDismissedSavings(true);
+        // We will check loan dismissal in a separate effect because it depends on loanReminder amount
+      } catch (e) {}
+    };
+    checkDismissals();
+  }, []);
+
+
+
 
   const [micState, setMicState] = useState<MicState>("idle");
   const [transcript, setTranscript] = useState("");
@@ -111,8 +132,8 @@ export default function DashboardScreen() {
       event.error === "no-speech"
         ? (t("dashboard.no_speech_detected"))
         : event.error === "not-allowed"
-        ? (t("dashboard.mic_denied"))
-        : msg
+          ? (t("dashboard.mic_denied"))
+          : msg
     );
     setMicState("error");
     resultTimer.current = setTimeout(() => setMicState("idle"), 4000);
@@ -277,6 +298,71 @@ export default function DashboardScreen() {
     };
   }, [user, payments, groupSettings, isPresident, isTreasurer]);
 
+  // ── Loan Reminder (members only) ───────────
+  const loanReminder = useMemo(() => {
+    if (isPresident || isTreasurer || !user) return null;
+    const active = loans.filter((l) => l.memberId === user.id && l.status === "approved" && l.remainingBalance > 0);
+    if (active.length === 0) return null;
+
+    if (active.length === 1) {
+      const l = active[0];
+      const outstandingInterest = l.outstandingInterest || 0;
+      const principalPortion = l.fixedPrincipalInstallment || Math.floor(l.amount / l.duration);
+      const interestPortion = Math.round((l.remainingBalance * l.interest) / 100);
+      return {
+        type: 'single' as const,
+        loan: l,
+        recommendedPayment: principalPortion + interestPortion + outstandingInterest,
+        principalPortion,
+        interestPortion,
+        outstandingInterest,
+        outstandingPrincipal: l.remainingBalance
+      };
+    } else {
+      const totalRecommended = active.reduce((sum, l) => {
+        const principal = l.fixedPrincipalInstallment || Math.floor(l.amount / l.duration);
+        const interest = Math.round((l.remainingBalance * l.interest) / 100);
+        return sum + principal + interest + (l.outstandingInterest || 0);
+      }, 0);
+      return {
+        type: 'multiple' as const,
+        count: active.length,
+        totalRecommended
+      };
+    }
+  }, [loans, user, isPresident, isTreasurer]);
+
+  useEffect(() => {
+    const checkLoanDismissal = async () => {
+      if (!loanReminder) return;
+      const now = new Date();
+      const currentDayStr = `${now.getFullYear()}-${now.getMonth()}-${now.getDate()}`;
+      const recAmount = loanReminder.type === 'single' ? loanReminder.recommendedPayment : loanReminder.totalRecommended;
+      try {
+        const l = await AsyncStorage.getItem(`dismissed_loan_${currentDayStr}_${recAmount}`);
+        setDismissedLoan(!!l);
+      } catch (e) {}
+    };
+    checkLoanDismissal();
+  }, [loanReminder]);
+
+  const dismissSavingsCard = async () => {
+    setDismissedSavings(true);
+    const now = new Date();
+    const currentMonthStr = `${now.getFullYear()}-${now.getMonth()}`;
+    await AsyncStorage.setItem(`dismissed_savings_${currentMonthStr}`, "true").catch(()=>{});
+  };
+
+  const dismissLoanCard = async () => {
+    if (!loanReminder) return;
+    setDismissedLoan(true);
+    const now = new Date();
+    const currentDayStr = `${now.getFullYear()}-${now.getMonth()}-${now.getDate()}`;
+    const recAmount = loanReminder.type === 'single' ? loanReminder.recommendedPayment : loanReminder.totalRecommended;
+    await AsyncStorage.setItem(`dismissed_loan_${currentDayStr}_${recAmount}`, "true").catch(()=>{});
+  };
+
+
   const formatDate = (dateStr: string) => {
     const d = new Date(dateStr);
     return d.toLocaleDateString("en-IN", { day: "numeric", month: "short" });
@@ -295,11 +381,10 @@ export default function DashboardScreen() {
     routeTo?: { pathname: string; params?: Record<string, string> };
   };
 
-  const myPayments = isPresident ? payments : payments.filter((p) => p.memberId === user?.id);
-  const myLoans = isPresident ? loans : loans.filter((l) => l.memberId === user?.id);
-
+  // The public activity feed displays group savings and meetings to ALL members for transparency.
+  // Loan activity is intentionally excluded to maintain member privacy.
   const recentActivity: ActivityItem[] = [
-    ...myPayments.map((p): ActivityItem => ({
+    ...payments.map((p): ActivityItem => ({
       id: "p_" + p.id,
       type: "payment",
       date: p.date,
@@ -309,18 +394,6 @@ export default function DashboardScreen() {
       statusColor: p.status === "confirmed" ? Colors.light.success : p.status === "pending" ? Colors.light.pending : Colors.light.danger,
       statusLabel: t(p.status),
       icon: "wallet",
-    })),
-    ...myLoans.map((l): ActivityItem => ({
-      id: "l_" + l.id,
-      type: "loan",
-      date: l.createdAt,
-      title: l.memberName,
-      subtitle: formatDate(l.createdAt),
-      amount: "Rs. " + l.amount,
-      statusColor: l.status === "approved" ? Colors.light.success : (l.status === "rejected" || l.status === "treasurer_rejected") ? Colors.light.danger : l.status === "pending_treasurer" ? "#D97706" : Colors.light.pending,
-      statusLabel: t(l.status),
-      icon: "cash",
-      routeTo: { pathname: "/loan/[id]", params: { id: l.id } },
     })),
     ...meetings.slice().reverse().map((m): ActivityItem => ({
       id: "m_" + m.id,
@@ -419,7 +492,7 @@ export default function DashboardScreen() {
                   ]}>
                     <View style={styles.reminderHeader}>
                       <View style={[styles.reminderIconWrap,
-                        { backgroundColor: isHot ? Colors.light.danger + "20" : "#F59E0B20" }]}>
+                      { backgroundColor: isHot ? Colors.light.danger + "20" : "#F59E0B20" }]}>
                         <Ionicons
                           name={isHot ? "alert-circle" : "time"}
                           size={20}
@@ -576,6 +649,96 @@ export default function DashboardScreen() {
 
 
 
+        
+        {/* ────── LOAN REPAYMENT REMINDER ────── */}
+        {loanReminder && !dismissedLoan && (
+          <View style={styles.section}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+              <Text style={styles.sectionTitle}>{t("dashboard.monthly_loan_reminder")}</Text>
+              <Pressable onPress={dismissLoanCard} style={{ padding: 4 }}>
+                <Text style={{ color: Colors.light.textMuted, fontSize: 13 }}>{t("dashboard.dismiss")}</Text>
+              </Pressable>
+            </View>
+
+            {loanReminder.type === 'single' ? (
+              <View style={[styles.reminderCard, { borderLeftColor: Colors.light.primary }]}>
+                <View style={styles.reminderHeader}>
+                  <View style={[styles.reminderIconWrap, { backgroundColor: Colors.light.primary + "20" }]}>
+                    <Ionicons name="cash-outline" size={20} color={Colors.light.primary} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.reminderTitle}>
+                      {t("history.loan_repayment")}
+                    </Text>
+                    <Text style={styles.reminderSubtitle}>
+                      {t("history.remaining_principal")}: Rs. {(loanReminder.outstandingPrincipal || 0).toLocaleString("en-IN")}
+                    </Text>
+                  </View>
+                </View>
+                <View style={styles.reminderDetails}>
+                  <View style={styles.reminderDetailRow}>
+                    <Text style={styles.reminderDetailLabel}>{t("recommended_monthly_payment")}</Text>
+                    <Text style={[styles.reminderDetailValue, { color: Colors.light.primary, fontWeight: 'bold' }]}>
+                      Rs. {(loanReminder.recommendedPayment || 0).toLocaleString("en-IN")}
+                    </Text>
+                  </View>
+                  <View style={styles.reminderDetailRow}>
+                    <Text style={styles.reminderDetailLabel}>{t("history.principal_portion")}</Text>
+                    <Text style={styles.reminderDetailValue}>Rs. {(loanReminder.principalPortion || 0).toLocaleString("en-IN")}</Text>
+                  </View>
+                  <View style={styles.reminderDetailRow}>
+                    <Text style={styles.reminderDetailLabel}>{t("history.interest_portion")}</Text>
+                    <Text style={styles.reminderDetailValue}>Rs. {(loanReminder.interestPortion || 0).toLocaleString("en-IN")}</Text>
+                  </View>
+                  {loanReminder.outstandingInterest > 0 && (
+                    <View style={styles.reminderDetailRow}>
+                      <Text style={[styles.reminderDetailLabel, { color: Colors.light.danger }]}>{t("dashboard.outstanding_interest")}</Text>
+                      <Text style={[styles.reminderDetailValue, { color: Colors.light.danger }]}>Rs. {(loanReminder.outstandingInterest).toLocaleString("en-IN")}</Text>
+                    </View>
+                  )}
+                </View>
+                <Pressable
+                  style={[styles.reminderPayBtn, { backgroundColor: Colors.light.primary }]}
+                  onPress={() => router.push(`/loan/${loanReminder.loan.id}`)}
+                  accessibilityRole="button"
+                >
+                  <Ionicons name="arrow-forward" size={18} color="#fff" />
+                  <Text style={styles.reminderPayBtnText}>{t("history.loan_repayment")}</Text>
+                </Pressable>
+              </View>
+            ) : (
+              <View style={[styles.reminderCard, { borderLeftColor: Colors.light.primary }]}>
+                <View style={styles.reminderHeader}>
+                  <View style={[styles.reminderIconWrap, { backgroundColor: Colors.light.primary + "20" }]}>
+                    <Ionicons name="layers-outline" size={20} color={Colors.light.primary} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.reminderTitle}>
+                      {t("dashboard.multiple_active_loans")} ({loanReminder.count})
+                    </Text>
+                  </View>
+                </View>
+                <View style={styles.reminderDetails}>
+                  <View style={styles.reminderDetailRow}>
+                    <Text style={styles.reminderDetailLabel}>{t("recommended_monthly_payment")}</Text>
+                    <Text style={[styles.reminderDetailValue, { color: Colors.light.primary, fontWeight: 'bold' }]}>
+                      Rs. {(loanReminder.totalRecommended || 0).toLocaleString("en-IN")}
+                    </Text>
+                  </View>
+                </View>
+                <Pressable
+                  style={[styles.reminderPayBtn, { backgroundColor: Colors.light.primary }]}
+                  onPress={() => router.push("/loans")}
+                  accessibilityRole="button"
+                >
+                  <Ionicons name="arrow-forward" size={18} color="#fff" />
+                  <Text style={styles.reminderPayBtnText}>{t("dashboard.multiple_active_loans")}</Text>
+                </Pressable>
+              </View>
+            )}
+          </View>
+        )}
+
         {groupSummary && (
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
@@ -583,37 +746,42 @@ export default function DashboardScreen() {
             </View>
             <View style={styles.summaryBox}>
               <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>{t("dashboard.totalSavings")}</Text>
-                <Text style={styles.summaryValue}>Rs. {groupSummary.totalSavings}</Text>
+                <Text style={styles.summaryLabel}>{t("dashboard.total_savings")}</Text>
+                <Text style={styles.summaryValue}>Rs. {(groupSummary.totalSavings || 0).toLocaleString("en-IN")}</Text>
               </View>
               <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>{t("dashboard.total_penalties")}</Text>
-                <Text style={styles.summaryValue}>Rs. {groupSummary.totalPenalties}</Text>
+                <Text style={styles.summaryLabel}>{t("dashboard.current_cash_balance")}</Text>
+                <Text style={[styles.summaryValue, { color: Colors.light.success, fontWeight: "bold" }]}>Rs. {(groupSummary.currentBalance || 0).toLocaleString("en-IN")}</Text>
               </View>
-              <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>{t("dashboard.loan_disbursed")}</Text>
-                <Text style={styles.summaryValue}>Rs. {groupSummary.totalLoanDisbursed}</Text>
-              </View>
-              <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>{t("dashboard.loan_repayments")}</Text>
-                <Text style={styles.summaryValue}>Rs. {groupSummary.totalRepayments}</Text>
-              </View>
-              {groupSummary.totalOutstanding > 0 && (
-                <View style={styles.summaryRow}>
-                  <Text style={styles.summaryLabel}>{t("dashboard.outstanding_loans")}</Text>
-                  <Text style={[styles.summaryValue, { color: Colors.light.danger }]}>Rs. {groupSummary.totalOutstanding}</Text>
-                </View>
-              )}
-              {(groupSummary.totalBankOutstanding || 0) > 0 && (
-                <View style={styles.summaryRow}>
-                  <Text style={styles.summaryLabel}>{t("bank.bank_outstanding")}</Text>
-                  <Text style={[styles.summaryValue, { color: Colors.light.danger }]}>Rs. {groupSummary.totalBankOutstanding}</Text>
-                </View>
-              )}
               <View style={styles.summaryDivider} />
               <View style={styles.summaryRow}>
-                <Text style={[styles.summaryLabel, { fontFamily: "Poppins_600SemiBold", color: Colors.light.primary }]}>{t("dashboard.current_balance")}</Text>
-                <Text style={[styles.summaryValue, { fontFamily: "Poppins_700Bold", color: Colors.light.primary, fontSize: 18 }]}>Rs. {groupSummary.currentBalance}</Text>
+                <Text style={styles.summaryLabel}>{t("dashboard.total_principal_disbursed")}</Text>
+                <Text style={styles.summaryValue}>Rs. {(groupSummary.totalPrincipalDisbursed || 0).toLocaleString("en-IN")}</Text>
+              </View>
+              <View style={styles.summaryRow}>
+                <Text style={styles.summaryLabel}>{t("dashboard.principal_collected")}</Text>
+                <Text style={[styles.summaryValue, { color: Colors.light.success }]}>Rs. {(groupSummary.principalCollected || 0).toLocaleString("en-IN")}</Text>
+              </View>
+              <View style={styles.summaryRow}>
+                <Text style={styles.summaryLabel}>{t("dashboard.interest_collected")}</Text>
+                <Text style={[styles.summaryValue, { color: Colors.light.success }]}>Rs. {(groupSummary.interestCollected || 0).toLocaleString("en-IN")}</Text>
+              </View>
+              <View style={styles.summaryRow}>
+                <Text style={styles.summaryLabel}>{t("dashboard.outstanding_principal")}</Text>
+                <Text style={[styles.summaryValue, { color: Colors.light.danger }]}>Rs. {(groupSummary.outstandingPrincipal || 0).toLocaleString("en-IN")}</Text>
+              </View>
+              <View style={styles.summaryRow}>
+                <Text style={styles.summaryLabel}>{t("dashboard.outstanding_interest")}</Text>
+                <Text style={[styles.summaryValue, { color: Colors.light.danger }]}>Rs. {(groupSummary.outstandingInterest || 0).toLocaleString("en-IN")}</Text>
+              </View>
+              <View style={styles.summaryDivider} />
+              <View style={styles.summaryRow}>
+                <Text style={styles.summaryLabel}>{t("dashboard.active_loans")}</Text>
+                <Text style={styles.summaryValue}>{groupSummary.activeLoansCount || 0}</Text>
+              </View>
+              <View style={styles.summaryRow}>
+                <Text style={styles.summaryLabel}>{t("dashboard.completed_loans")}</Text>
+                <Text style={styles.summaryValue}>{groupSummary.completedLoansCount || 0}</Text>
               </View>
             </View>
           </View>

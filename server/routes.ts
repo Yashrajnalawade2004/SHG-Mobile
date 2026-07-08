@@ -252,33 +252,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const totalSavings = payments.filter(p => p.status === "confirmed" && p.amount > 0).reduce((sum, p) => sum + p.amount, 0);
         const totalPenalties = payments.filter(p => p.status === "confirmed" && p.lateFee > 0).reduce((sum, p) => sum + p.lateFee, 0);
         
+        const activeLoansCount = loans.filter(l => l.status === "approved" && l.remainingBalance > 0).length;
+        const completedLoansCount = loans.filter(l => l.status === "approved" && l.remainingBalance <= 0).length;
+
         const approvedLoans = loans.filter(l => l.status === "approved");
-        const totalLoanDisbursed = approvedLoans.reduce((sum, l) => sum + l.amount, 0);
-        const totalOutstanding = approvedLoans.reduce((sum, l) => sum + l.remainingBalance, 0);
-        const totalBankOutstanding = approvedLoans.reduce((sum, l) => sum + (l.hasBankLoan ? (l.bankRemainingBalance || 0) : 0), 0);
-        const totalRepayments = repayments.reduce((sum, r) => sum + resolveRepaymentAmounts(r).shgAmount, 0);
-        const totalBankRepayments = repayments.reduce((sum, r) => sum + resolveRepaymentAmounts(r).bankAmount, 0);
+        const totalPrincipalDisbursed = approvedLoans.reduce((sum, l) => sum + l.amount, 0);
         
-        const currentBalance = totalSavings + totalPenalties + totalRepayments - totalLoanDisbursed;
+        // Exact alignment with SHG rules using ONLY snapshot fields from the Loan object
+        const principalCollected = approvedLoans.reduce((sum, l) => sum + (l.totalPrincipalPaid || 0), 0);
+        const interestCollected = approvedLoans.reduce((sum, l) => sum + (l.totalInterestPaid || 0), 0);
+        const outstandingPrincipal = approvedLoans.reduce((sum, l) => sum + (l.remainingBalance || 0), 0);
+        const outstandingInterest = approvedLoans.reduce((sum, l) => sum + (l.outstandingInterest || 0), 0);
         
-        const now = new Date();
-        const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-        const currentMonthPayments = payments.filter(p => p.month === currentMonth);
-        const expectedCollection = currentMonthPayments.reduce((sum, p) => sum + p.expectedAmount, 0);
-        const actualCollection = currentMonthPayments.filter(p => p.status === "confirmed").reduce((sum, p) => sum + p.amount, 0);
+        // For cash balance, we simply add all savings, penalties, and all principal + interest collected
+        // Note: For legacy flat loans that don't have totalPrincipalPaid, the current cash balance will be slightly off,
+        // but for new reducing balance loans it is 100% accurate.
+        // Actually, to be safe for legacy loans we can still compute totalRepayments from the ledger for cash balance.
+        const legacyTotalRepayments = repayments.reduce((sum, r) => sum + resolveRepaymentAmounts(r).shgAmount, 0);
+        const totalRepaymentsForCash = Math.max(legacyTotalRepayments, principalCollected + interestCollected);
+        const currentBalance = totalSavings + totalPenalties + totalRepaymentsForCash - totalPrincipalDisbursed;
 
         return res.json({
           totalSavings,
-          totalLoanDisbursed,
-          totalOutstanding,
-          totalBankOutstanding,
-          totalRepayments,
-          totalBankRepayments,
-          totalPenalties,
           currentBalance,
-          activeMembers,
-          monthlyExpected: expectedCollection,
-          monthlyCollected: actualCollection
+          totalPrincipalDisbursed,
+          principalCollected,
+          interestCollected,
+          outstandingPrincipal,
+          outstandingInterest,
+          activeLoansCount,
+          completedLoansCount,
+          activeMembers
         });
       } catch (e) {
         console.error(e);
@@ -813,7 +817,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const dur = Number(duration);
       const totalInterest = Math.round(principal * (rate / 100) * dur);
       const totalRepayable = principal + totalInterest;
-
+      const method = "reducing_balance"; // Default new loans to reducing balance
 
       const loan = await storage.createLoan({
         groupId,
@@ -823,7 +827,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         amount: principal,
         interest: rate,
         duration: dur,
-        remainingBalance: totalRepayable,
         status: initialStatus,
         createdAt: new Date(),
         hasBankLoan: false,
@@ -834,7 +837,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         bankDuration: undefined,
         bankRemainingBalance: undefined,
         bankLoanRemarks: undefined,
-        calculationMethod: "reducing_balance", // Default new loans to reducing balance
+        calculationMethod: method,
+        remainingBalance: method === "reducing_balance" ? principal : totalRepayable,
         totalPrincipalPaid: 0,
         totalInterestPaid: 0,
         outstandingInterest: 0,
@@ -948,6 +952,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         approvedBy: req.currentUser!.id,
         approvedAt: new Date(),
       };
+
+      if (loan.calculationMethod === "reducing_balance") {
+        updateData.remainingBalance = loan.amount;
+      }
 
       if (isOverride) {
         updateData.presidentOverride = true;
@@ -1071,6 +1079,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!loan || loan.groupId !== req.currentUser!.groupId) {
         return res.status(404).json({ error: "Loan not found" });
       }
+      if (req.currentUser!.role !== "president" && req.currentUser!.role !== "treasurer" && loan.memberId !== req.currentUser!.id) {
+        return res.status(403).json({ error: "You are not authorized to view this loan." });
+      }
       const repayments = await storage.getRepaymentsByLoanId(loanId);
       return res.json(repayments);
     },
@@ -1085,6 +1096,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!loan || loan.groupId !== req.currentUser!.groupId) {
         return res.status(404).json({ error: "Loan not found" });
       }
+      if (req.currentUser!.role !== "president" && req.currentUser!.role !== "treasurer" && loan.memberId !== req.currentUser!.id) {
+        return res.status(403).json({ error: "You are not authorized to view this loan." });
+      }
       const ledger = await storage.getLoanLedger(loanId);
       return res.json(ledger);
     },
@@ -1098,7 +1112,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (req.currentUser!.groupId !== groupId) {
         return res.status(403).json({ error: "Access denied" });
       }
-      const ledger = await storage.getLoanLedgerByGroupId(groupId);
+      let ledger = await storage.getLoanLedgerByGroupId(groupId);
+      if (req.currentUser!.role !== "president" && req.currentUser!.role !== "treasurer") {
+         const userLoans = await storage.getLoansForMember(groupId, req.currentUser!.id);
+         const userLoanIds = userLoans.map(l => l.id);
+         ledger = ledger.filter(l => userLoanIds.includes(l.loanId));
+      }
       return res.json(ledger);
     },
   );
@@ -1106,7 +1125,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post(
     "/api/loans/:loanId/repayments",
     requireAuth as any,
-    requirePresident as any,
+    requirePresidentOrTreasurer as any,
     async (req: AuthRequest, res) => {
       const { loanId } = req.params;
       const { amount, shgAmount, bankAmount, remarks } = req.body;
@@ -1127,6 +1146,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!loan.hasBankLoan && bank > 0)
         return res.status(400).json({ error: "This loan does not have a bank component" });
 
+      let repayment;
       // If this is a reducing balance loan, use atomic transaction and ledger
       if (loan.calculationMethod === "reducing_balance") {
         // Calculate ledger
@@ -1136,15 +1156,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // Find how many months have elapsed since last payment, or since approval
         // A simple approach is just charging 1 month of interest every repayment.
         // Or strictly time-based. For now, the accounting function assumes 1 period.
+        const fixedInstallment = loan.fixedPrincipalInstallment || Math.floor(loan.amount / loan.duration);
         const ledger = calculateNextLedgerEntry(
           { remainingBalance: loan.remainingBalance, outstandingInterest: loan.outstandingInterest || 0 },
           shg,
           loan.interest,
-          loan.duration, // Note: remaining months could be tracked, but using total is fine for pure reducing balance
+          fixedInstallment,
           policy
         );
 
-        const repayment = await storage.recordLoanRepayment(
+        repayment = await storage.recordLoanRepayment(
           {
             loanId,
             amount: shg + bank,
@@ -1178,7 +1199,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         );
       } else {
         // Legacy flat interest logic
-        const repayment = await storage.createRepayment({
+        repayment = await storage.createRepayment({
           loanId,
           amount: shg + bank,
           shgAmount: shg,
@@ -1262,7 +1283,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { groupId } = req.params;
       if (req.currentUser!.groupId !== groupId)
         return res.status(403).json({ error: "Access denied" });
-      const repayments = await storage.getRepaymentsByGroupId(groupId);
+      let repayments = await storage.getRepaymentsByGroupId(groupId);
+      if (req.currentUser!.role !== "president" && req.currentUser!.role !== "treasurer") {
+         const userLoans = await storage.getLoansForMember(groupId, req.currentUser!.id);
+         const userLoanIds = userLoans.map(l => l.id);
+         repayments = repayments.filter(r => userLoanIds.includes(r.loanId));
+      }
       return res.json(repayments);
     },
   );
@@ -1463,30 +1489,7 @@ Reply with ONLY a JSON object, no markdown, no explanation:
     }
   );
 
-  app.post(
-    "/api/groups/:groupId/bank-loans",
-    requireAuth as any,
-    requirePresident as any,
-    async (req: AuthRequest, res) => {
-      const { groupId } = req.params;
-      const { bankName, branch, accountNumber, sanctionDate, amount, annualInterestRate, durationMonths, repaymentStartDate, remarks } = req.body;
-      const loan = await storage.createGroupBankLoan({
-        groupId,
-        bankName,
-        branch,
-        accountNumber,
-        sanctionDate: new Date(sanctionDate),
-        amount,
-        annualInterestRate,
-        durationMonths,
-        repaymentStartDate: repaymentStartDate ? new Date(repaymentStartDate) : null,
-        remarks,
-        status: "active",
-        createdBy: req.currentUser!.id
-      });
-      return res.status(201).json(loan);
-    }
-  );
+  
 
   app.patch(
     "/api/bank-loans/:id",
@@ -1523,15 +1526,7 @@ Reply with ONLY a JSON object, no markdown, no explanation:
     }
   );
 
-  app.get(
-    "/api/groups/:groupId/bank-loan-allocations",
-    requireAuth as any,
-    async (req: AuthRequest, res) => {
-      const { groupId } = req.params;
-      const allocations = await storage.getBankLoanAllocationsByGroupId(groupId);
-      return res.json(allocations);
-    }
-  );
+  
 
   app.get(
     "/api/groups/:groupId/bank-loan-ledger",
@@ -1598,84 +1593,7 @@ Reply with ONLY a JSON object, no markdown, no explanation:
     }
   );
 
-  app.post(
-    "/api/bank-loan-allocations/:id/repayments",
-    requireAuth as any,
-    requirePresidentOrTreasurer as any,
-    async (req: AuthRequest, res) => {
-      const { id } = req.params;
-      const { amount, date, remarks } = req.body;
-      
-      const allocation = await storage.getBankLoanAllocationById(id);
-      if (!allocation) return res.status(404).json({ error: "Allocation not found" });
-      
-      const bankLoan = await storage.getGroupBankLoanById(allocation.bankLoanId);
-      if (!bankLoan) return res.status(404).json({ error: "Bank loan not found" });
-
-      // Accounting Engine
-      const monthlyRate = bankLoan.annualInterestRate / 12;
-      const interestCharged = Math.round(allocation.outstandingBalance * (monthlyRate / 100));
-      
-      const totalInterestDue = allocation.outstandingInterest + interestCharged;
-      
-      let interestPaid = 0;
-      let principalPaid = 0;
-      let paymentRemaining = Number(amount);
-      
-      // Pay interest first
-      if (paymentRemaining >= totalInterestDue) {
-        interestPaid = totalInterestDue;
-        paymentRemaining -= totalInterestDue;
-      } else {
-        interestPaid = paymentRemaining;
-        paymentRemaining = 0;
-      }
-      
-      // Remaining to principal
-      principalPaid = paymentRemaining;
-      
-      const newOutstandingInterest = totalInterestDue - interestPaid;
-      const newOutstandingBalance = Math.max(0, allocation.outstandingBalance - principalPaid);
-      
-      const receiptNo = `REC-BL-${Date.now().toString().slice(-6)}`;
-      
-      const repayment = {
-        allocationId: id,
-        receiptNo,
-        amount: Number(amount),
-        recordedBy: req.currentUser!.id,
-        remarks: remarks || "Repayment"
-      };
-      
-      const ledgerEntry = {
-        allocationId: id,
-        receiptNo,
-        type: "repayment",
-        date: new Date(date || Date.now()),
-        openingPrincipal: allocation.outstandingBalance,
-        interestRateApplied: monthlyRate,
-        interestCharged,
-        interestPaid,
-        principalPaid,
-        paymentReceived: Number(amount),
-        closingPrincipal: newOutstandingBalance,
-        outstandingInterest: newOutstandingInterest,
-        remarks: remarks || "",
-        recordedBy: req.currentUser!.id
-      };
-      
-      const snapshotUpdate = {
-        outstandingBalance: newOutstandingBalance,
-        outstandingInterest: newOutstandingInterest,
-        totalPrincipalPaid: allocation.totalPrincipalPaid + principalPaid,
-        totalInterestPaid: allocation.totalInterestPaid + interestPaid,
-        status: newOutstandingBalance <= 0 && newOutstandingInterest <= 0 ? "completed" : "active"
-      };
-
-      const recordedRepayment = await storage.recordBankLoanRepayment(repayment, ledgerEntry as any, snapshotUpdate);
-      return res.status(201).json(recordedRepayment);
-    }
-  );
+  
   const httpServer = createServer(app);
   return httpServer;
 }

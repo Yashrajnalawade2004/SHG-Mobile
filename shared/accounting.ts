@@ -87,7 +87,7 @@ export function calculateNextLedgerEntry(
   loanSnapshot: { remainingBalance: number; outstandingInterest: number },
   paymentAmount: number,
   monthlyRate: number,
-  remainingMonths: number,
+  fixedPrincipalInstallment: number,
   unpaidInterestPolicy: 'due' | 'capitalize' = 'due'
 ): LedgerEntryCalculation {
   const openingPrincipal = loanSnapshot.remainingBalance;
@@ -128,8 +128,7 @@ export function calculateNextLedgerEntry(
 
   // 4. Calculate Suggested Installments for the UI (using current month's opening principal)
   // Suggested Principal = Outstanding ÷ Remaining Months
-  const safeRemainingMonths = remainingMonths > 0 ? remainingMonths : 1;
-  const suggestedPrincipal = Math.round(openingPrincipal / safeRemainingMonths);
+  const suggestedPrincipal = Math.min(fixedPrincipalInstallment, openingPrincipal);
   const suggestedInstallment = suggestedPrincipal + interestCharged + previousOutstandingInterest;
 
   return {
@@ -145,5 +144,37 @@ export function calculateNextLedgerEntry(
     suggestedPrincipal,
     suggestedInstallment,
     totalInterestDue
+  };
+}
+
+
+export interface LoanRecommendation {
+  outstandingPrincipal: number;
+  currentMonthInterest: number;
+  fixedPrincipalInstallment: number;
+  outstandingInterest: number;
+  recommendedPrincipal: number;
+  recommendedMonthlyPayment: number;
+  remainingMonths: number;
+}
+
+export function getCurrentLoanRecommendation(loan: any): LoanRecommendation {
+  const outstandingPrincipal = loan.remainingBalance || 0;
+  const outstandingInterest = loan.outstandingInterest || 0;
+  const fixedPrincipalInstallment = loan.fixedPrincipalInstallment || Math.floor((loan.amount || 0) / (loan.duration || 1));
+  
+  const currentMonthInterest = Math.round(outstandingPrincipal * ((loan.interest || 0) / 100));
+  const recommendedPrincipal = Math.min(fixedPrincipalInstallment, outstandingPrincipal);
+  const recommendedMonthlyPayment = recommendedPrincipal + currentMonthInterest + outstandingInterest;
+  const remainingMonths = fixedPrincipalInstallment > 0 ? Math.ceil(outstandingPrincipal / fixedPrincipalInstallment) : 0;
+
+  return {
+    outstandingPrincipal,
+    currentMonthInterest,
+    fixedPrincipalInstallment,
+    outstandingInterest,
+    recommendedPrincipal,
+    recommendedMonthlyPayment,
+    remainingMonths
   };
 }

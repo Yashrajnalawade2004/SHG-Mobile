@@ -6,7 +6,7 @@ import { router } from "expo-router";
 import * as Haptics from "expo-haptics";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLanguage } from "@/contexts/LanguageContext";
-import { useData, GroupBankLoan, BankLoanAllocation } from "@/contexts/DataContext";
+import { useData, GroupBankLoan } from "@/contexts/DataContext";
 import Colors from "@/constants/colors";
 
 function statusColor(status: string): string {
@@ -17,13 +17,9 @@ function statusColor(status: string): string {
   }
 }
 
-function BankLoanItem({ loan, allocations }: { loan: GroupBankLoan, allocations: BankLoanAllocation[] }) {
+function BankLoanItem({ loan }: { loan: GroupBankLoan }) {
   const { t } = useLanguage();
   const color = statusColor(loan.status);
-  
-  const totalAllocated = allocations.reduce((sum, a) => sum + a.allocatedPrincipal, 0);
-  const totalOutstanding = allocations.reduce((sum, a) => sum + a.outstandingBalance, 0);
-
   return (
     <Pressable
       style={styles.loanCard}
@@ -50,14 +46,6 @@ function BankLoanItem({ loan, allocations }: { loan: GroupBankLoan, allocations:
           <Text style={styles.detailLabel}>{t("annualInterestRate")}</Text>
           <Text style={styles.detailValue}>{loan.annualInterestRate}%</Text>
         </View>
-        <View style={styles.loanDetail}>
-          <Text style={styles.detailLabel}>{t("totalAllocated")}</Text>
-          <Text style={styles.detailValue}>Rs. {totalAllocated.toLocaleString("en-IN")}</Text>
-        </View>
-        <View style={styles.loanDetail}>
-          <Text style={styles.detailLabel}>{t("bankOutstanding")}</Text>
-          <Text style={styles.detailValue}>Rs. {totalOutstanding.toLocaleString("en-IN")}</Text>
-        </View>
       </View>
     </Pressable>
   );
@@ -67,7 +55,7 @@ export default function BankLoansScreen() {
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
   const { t } = useLanguage();
-  const { groupBankLoans, bankLoanAllocations } = useData();
+  const { groupBankLoans } = useData();
 
   const isPresident = user?.role === "president";
 
@@ -95,10 +83,7 @@ export default function BankLoansScreen() {
         data={groupBankLoans}
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => (
-          <BankLoanItem 
-            loan={item} 
-            allocations={bankLoanAllocations.filter(a => a.bankLoanId === item.id)} 
-          />
+          <BankLoanItem loan={item} />
         )}
         contentContainerStyle={styles.listContainer}
         ListEmptyComponent={

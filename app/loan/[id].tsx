@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import {
   View, Text, StyleSheet, ScrollView, Pressable, Platform,
-  TextInput, Modal, Alert
+  TextInput, Modal, Alert, Image
 } from "react-native";
 import { useLocalSearchParams, router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -11,7 +11,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useData } from "@/contexts/DataContext";
 import { apiGet } from "@/lib/api";
-import { calculateNextLedgerEntry } from "@/shared/accounting";
+import { calculateShgTotal, calculateNextLedgerEntry, getCurrentLoanRecommendation } from "@/shared/accounting";
 import Colors from "@/constants/colors";
 import ConfirmDialog from "@/components/ConfirmDialog";
 
@@ -31,10 +31,11 @@ type DialogType = "approveTreasurer" | "rejectTreasurer" | "rejectPresident" | "
 export default function LoanDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const insets = useSafeAreaInsets();
-  const { isPresident, isTreasurer } = useAuth();
+  const { group, isPresident, isTreasurer } = useAuth();
   const { t } = useLanguage();
+  const [showQrModal, setShowQrModal] = useState(false);
   const {
-    loans, loanRepayments,
+    loans, loanRepayments, groupMembers, groupSummary,
     treasurerApproveLoan, treasurerRejectLoan,
     approveLoan, rejectLoan,
     addRepayment, deleteRepayment, deleteLoan,
@@ -60,9 +61,10 @@ export default function LoanDetailScreen() {
 
   if (!loan) {
     return (
-      <View style={[styles.container, { justifyContent: "center", alignItems: "center" }]}>
-        <Ionicons name="alert-circle-outline" size={48} color={Colors.light.textMuted} />
-        <Text style={styles.emptyText}>{t("auto.loan_not_found")}</Text>
+      <View style={[styles.container, { justifyContent: "center", alignItems: "center", padding: 20 }]}>
+        <Ionicons name="lock-closed-outline" size={64} color={Colors.light.danger} />
+        <Text style={[styles.emptyText, { marginTop: 16, color: Colors.light.danger, fontSize: 18, fontWeight: 'bold', textAlign: 'center' }]}>{t("unauthorized_loan_view")}</Text>
+        <Text style={{ marginTop: 8, color: Colors.light.textSecondary, textAlign: 'center' }}>{t("loan_privacy_notice")}</Text>
       </View>
     );
   }
@@ -94,16 +96,13 @@ export default function LoanDetailScreen() {
   const shgEmi = loan.duration > 0 ? Math.round((loan.amount + totalInterest) / loan.duration) : 0;
 
   // Reducing Balance Logic
-  const monthsElapsed = loan.approvedAt ? Math.max(1, Math.floor((new Date().getTime() - new Date(loan.approvedAt).getTime()) / (1000 * 60 * 60 * 24 * 30))) : 1;
-  const remainingMonths = Math.max(1, loan.duration - monthsElapsed + 1);
-  const nextLedger = loan.calculationMethod === "reducing_balance" 
-    ? calculateNextLedgerEntry(
-        { remainingBalance: loan.remainingBalance, outstandingInterest: loan.outstandingInterest || 0 },
-        0, // 0 payment to just see the breakdown
-        loan.interest,
-        remainingMonths,
-        "due"
-      )
+  const fixedPrincipalInstallment = loan.fixedPrincipalInstallment || Math.floor(loan.amount / loan.duration);
+  const remainingMonths = fixedPrincipalInstallment > 0 ? Math.ceil(loan.remainingBalance / fixedPrincipalInstallment) : 0;
+  const displayEntriesLast = [...displayEntries].filter(e => e.type !== "disbursement" || !isReducingBalance).sort((a,b) => new Date(b.date || b.transactionDate).getTime() - new Date(a.date || a.transactionDate).getTime());
+  const lastPayment = displayEntriesLast[0];
+
+  const recommendation = loan.calculationMethod === "reducing_balance" 
+    ? getCurrentLoanRecommendation(loan)
     : null;
 
   const handleTreasurerApprove = async () => {
@@ -148,6 +147,18 @@ export default function LoanDetailScreen() {
       setRejectReason("");
     } catch (e: any) {
       Alert.alert(t("error"), e.message || t("error"));
+    }
+  };
+
+  const handleExportPassbook = async () => {
+    try {
+      // We will implement generateLoanPassbookReport in pdf-generator.ts
+      const { generateLoanPassbookReport } = require('../../lib/pdf-generator');
+      const mem = groupMembers.find(m => m.id === loan.memberId);
+      await generateLoanPassbookReport(loan, mem, displayEntries, groupSummary, t);
+    } catch (err) {
+      console.error(err);
+      alert("Failed to export passbook");
     }
   };
 
@@ -197,7 +208,7 @@ export default function LoanDetailScreen() {
         { remainingBalance: loan.remainingBalance, outstandingInterest: loan.outstandingInterest || 0 },
         previewRepayAmount,
         loan.interest,
-        remainingMonths,
+        fixedPrincipalInstallment,
         "due"
       )
     : null;
@@ -323,7 +334,7 @@ export default function LoanDetailScreen() {
           )}
         </View>
 
-        {loan.calculationMethod === "reducing_balance" && showRepayment && nextLedger && loan.remainingBalance > 0 && (
+        {loan.calculationMethod === "reducing_balance" && showRepayment && recommendation && loan.remainingBalance > 0 && (
           <View style={[styles.amountCard, { marginTop: 16, backgroundColor: Colors.light.card, borderColor: Colors.light.primary, borderWidth: 1 }]}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 16 }}>
               <Ionicons name="calculator" size={20} color={Colors.light.primary} />
@@ -332,30 +343,30 @@ export default function LoanDetailScreen() {
             
             <View style={styles.formulaBox}>
               <Text style={styles.formulaLabel}>{t("outstanding_principal")}</Text>
-              <Text style={styles.formulaValue}>Rs. {nextLedger.openingPrincipal.toLocaleString("en-IN")}</Text>
+              <Text style={styles.formulaValue}>Rs. {recommendation.outstandingPrincipal.toLocaleString("en-IN")}</Text>
             </View>
             
             <View style={styles.formulaBox}>
               <Text style={styles.formulaLabel}>{t("monthly_interest_rate")}</Text>
-              <Text style={styles.formulaValue}>{nextLedger.interestRateApplied}%</Text>
+              <Text style={styles.formulaValue}>{loan.interest}%</Text>
             </View>
             
             <View style={styles.formulaHighlight}>
               <Text style={styles.formulaLabelHighlight}>{t("current_month_interest")}</Text>
-              <Text style={styles.formulaDetail}>Rs. {nextLedger.openingPrincipal.toLocaleString("en-IN")} × {nextLedger.interestRateApplied}%</Text>
-              <Text style={styles.formulaResult}>= Rs. {nextLedger.interestCharged.toLocaleString("en-IN")}</Text>
+              <Text style={styles.formulaDetail}>Rs. {recommendation.outstandingPrincipal.toLocaleString("en-IN")} × {loan.interest}%</Text>
+              <Text style={styles.formulaResult}>= Rs. {recommendation.currentMonthInterest.toLocaleString("en-IN")}</Text>
             </View>
 
             <View style={styles.formulaBox}>
               <Text style={styles.formulaLabel}>{t("suggested_principal")}</Text>
-              <Text style={styles.formulaDetail}>Rs. {nextLedger.openingPrincipal.toLocaleString("en-IN")} ÷ {remainingMonths} {t("auto.mo")}</Text>
-              <Text style={styles.formulaResult}>= Rs. {nextLedger.suggestedPrincipal.toLocaleString("en-IN")}</Text>
+              <Text style={styles.formulaDetail}>Rs. {recommendation.outstandingPrincipal.toLocaleString("en-IN")} ÷ {remainingMonths} {t("auto.mo")}</Text>
+              <Text style={styles.formulaResult}>= Rs. {(recommendation?.recommendedPrincipal || 0).toLocaleString("en-IN")}</Text>
             </View>
             
             <View style={styles.formulaHighlight}>
               <Text style={styles.formulaLabelHighlight}>{t("suggested_installment")}</Text>
-              <Text style={styles.formulaDetail}>Rs. {nextLedger.suggestedPrincipal.toLocaleString("en-IN")} + Rs. {nextLedger.interestCharged.toLocaleString("en-IN")}</Text>
-              <Text style={styles.formulaResult}>= Rs. {(nextLedger.suggestedPrincipal + nextLedger.interestCharged).toLocaleString("en-IN")}</Text>
+              <Text style={styles.formulaDetail}>Rs. {(recommendation?.recommendedPrincipal || 0).toLocaleString("en-IN")} + Rs. {recommendation.currentMonthInterest.toLocaleString("en-IN")}</Text>
+              <Text style={styles.formulaResult}>= Rs. {((recommendation?.recommendedPrincipal || 0) + recommendation.currentMonthInterest).toLocaleString("en-IN")}</Text>
             </View>
 
             {(loan.outstandingInterest || 0) > 0 && (
@@ -368,13 +379,24 @@ export default function LoanDetailScreen() {
             <View style={[styles.formulaHighlight, { backgroundColor: Colors.light.primary + '10', borderTopWidth: 1, borderColor: Colors.light.primary + '30', marginTop: 8 }]}>
               <Text style={[styles.formulaLabelHighlight, { color: Colors.light.primary }]}>{t("total_suggested_payment")}</Text>
               {(loan.outstandingInterest || 0) > 0 && (
-                <Text style={styles.formulaDetail}>Rs. {(nextLedger.suggestedPrincipal + nextLedger.interestCharged).toLocaleString("en-IN")} + Rs. {(loan.outstandingInterest || 0).toLocaleString("en-IN")}</Text>
+                <Text style={styles.formulaDetail}>Rs. {((recommendation?.recommendedPrincipal || 0) + recommendation.currentMonthInterest).toLocaleString("en-IN")} + Rs. {(loan.outstandingInterest || 0).toLocaleString("en-IN")}</Text>
               )}
               <Text style={[styles.formulaResult, { fontSize: 18, color: Colors.light.primary }]}>
-                = Rs. {nextLedger.suggestedInstallment.toLocaleString("en-IN")}
+                = Rs. {(recommendation?.recommendedMonthlyPayment || 0).toLocaleString("en-IN")}
               </Text>
             </View>
           </View>
+        )}
+
+        
+        {!isPresident && !isTreasurer && loan.calculationMethod === "reducing_balance" && loan.remainingBalance > 0 && (
+          <Pressable 
+            style={[styles.approveBtn, { backgroundColor: Colors.light.primary, marginBottom: 16 }]} 
+            onPress={() => setShowQrModal(true)}
+          >
+            <Ionicons name="qr-code-outline" size={18} color="#fff" />
+            <Text style={styles.approveBtnText}>{t("qr_modal_title")}</Text>
+          </Pressable>
         )}
 
         <View style={styles.infoCard}>
@@ -638,6 +660,49 @@ export default function LoanDetailScreen() {
         )}
       </ScrollView>
 
+      {/* QR Code Modal */}
+      <Modal visible={showQrModal} transparent animationType="fade" onRequestClose={() => setShowQrModal(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>{t("pay_via_qr")}</Text>
+            <View style={{ backgroundColor: Colors.light.card, padding: 16, borderRadius: 8, marginBottom: 16, width: '100%', alignItems: 'center' }}>
+              <Text style={{ fontFamily: "Poppins_600SemiBold", fontSize: 14, color: Colors.light.primary, marginBottom: 8 }}>{t("monthly_installment")}</Text>
+              
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', width: '100%', marginBottom: 4 }}>
+                <Text style={{ fontFamily: "Poppins_400Regular", fontSize: 13, color: Colors.light.textSecondary }}>{t("principal_portion")}</Text>
+                <Text style={{ fontFamily: "Poppins_500Medium", fontSize: 13, color: Colors.light.text }}>Rs. {recommendation?.recommendedPrincipal?.toLocaleString("en-IN") || 0}</Text>
+              </View>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', width: '100%', marginBottom: 8 }}>
+                <Text style={{ fontFamily: "Poppins_400Regular", fontSize: 13, color: Colors.light.textSecondary }}>{t("interest_portion")}</Text>
+                <Text style={{ fontFamily: "Poppins_500Medium", fontSize: 13, color: Colors.light.text }}>Rs. {((recommendation?.currentMonthInterest || 0) + (loan?.outstandingInterest || 0)).toLocaleString("en-IN")}</Text>
+              </View>
+              
+              <View style={{ borderTopWidth: 1, borderTopColor: Colors.light.border, paddingTop: 8, flexDirection: 'row', justifyContent: 'space-between', width: '100%' }}>
+                <Text style={{ fontFamily: "Poppins_600SemiBold", fontSize: 14, color: Colors.light.primary }}>{t("total_amount_to_pay")}</Text>
+                <Text style={{ fontFamily: "Poppins_700Bold", fontSize: 16, color: Colors.light.primary }}>Rs. {recommendation?.recommendedMonthlyPayment?.toLocaleString("en-IN") || Math.round((loan.amount + Math.round(loan.amount * (loan.interest / 100) * loan.duration)) / loan.duration).toLocaleString("en-IN")}</Text>
+              </View>
+            </View>
+
+            {group?.qrCode ? (
+              <Image source={{ uri: group.qrCode }} style={{ width: 200, height: 200, marginBottom: 16 }} />
+            ) : (
+              <Text style={{ fontFamily: "Poppins_400Regular", color: Colors.light.textMuted, marginBottom: 16 }}>{t("noqrcode")}</Text>
+            )}
+
+            <View style={{ backgroundColor: '#FFFBEB', padding: 12, borderRadius: 8, borderColor: '#FDE68A', borderWidth: 1, marginBottom: 16 }}>
+              <Text style={{ fontFamily: "Poppins_400Regular", fontSize: 12, color: '#D97706', textAlign: 'center' }}>
+                {t("qr_payment_warning")}
+              </Text>
+            </View>
+
+            <Pressable style={styles.modalCancelBtn} onPress={() => setShowQrModal(false)}>
+              <Text style={styles.modalCancelText}>{t("done")}</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
+
+
       <ConfirmDialog
         visible={dialog === "approveTreasurer"}
         title={t("auto.approve_loan_request")}
@@ -699,6 +764,8 @@ export default function LoanDetailScreen() {
 }
 
 const styles = StyleSheet.create({
+  tableHeader: { fontFamily: "Poppins_600SemiBold", fontSize: 11, color: "#fff" },
+  tableCell: { fontFamily: "Poppins_400Regular", fontSize: 11, color: Colors.light.text },
   container: { flex: 1, backgroundColor: Colors.light.background },
   content: { paddingHorizontal: 20 },
   header: {

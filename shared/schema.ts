@@ -173,6 +173,7 @@ export const loans = pgTable("loans", {
   bankLoanRemarks: text("bank_loan_remarks"),
   
   calculationMethod: varchar("calculation_method", { length: 20 }).notNull().default("legacy"),
+  fixedPrincipalInstallment: integer("fixed_principal_installment"),
   totalPrincipalPaid: integer("total_principal_paid").notNull().default(0),
   totalInterestPaid: integer("total_interest_paid").notNull().default(0),
   outstandingInterest: integer("outstanding_interest").notNull().default(0),
