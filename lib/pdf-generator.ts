@@ -678,3 +678,93 @@ export async function generateMemberStatementReport(
   html += getFooterHtml(t);
   return printOrShareHtml(html, `Member_Statement_${member.name.replace(/\s+/g, "_")}.pdf`, t);
 }
+
+
+export async function generateLoanPassbookReport(
+  loan: any,
+  member: any,
+  entries: any[],
+  group: any,
+  t: any
+) {
+  let html = getHeaderHtml(group, t("passbook") + " - " + (member ? member.name : "Unknown"), t);
+  const isReducingBalance = loan.calculationMethod === 'reducing_balance';
+
+  html += `
+    <div style="margin-bottom:20px; border:1px solid #ddd; padding:15px; border-radius:8px;">
+      <h3 style="margin-top:0;">${t("loan_summary")}</h3>
+      <table style="width:100%; border-collapse:collapse; font-size:12px;">
+        <tr>
+          <td style="padding:4px 0;"><strong>${t("loanAmount")}:</strong> Rs. ${loan.amount.toLocaleString("en-IN")}</td>
+          <td style="padding:4px 0;"><strong>${t("interest")}:</strong> ${loan.interest}%</td>
+          <td style="padding:4px 0;"><strong>${t("duration")}:</strong> ${loan.duration} ${t("auto.mo")}</td>
+        </tr>
+        <tr>
+          <td style="padding:4px 0;"><strong>${t("outstanding_principal")}:</strong> Rs. ${Math.max(0, loan.remainingBalance).toLocaleString("en-IN")}</td>
+          <td style="padding:4px 0;"><strong>${t("outstanding_interest")}:</strong> Rs. ${Math.max(0, loan.outstandingInterest || 0).toLocaleString("en-IN")}</td>
+          <td style="padding:4px 0;"><strong>${t("loan_status")}:</strong> ${loan.remainingBalance <= 0 ? t("completed") : t("active_status")}</td>
+        </tr>
+      </table>
+    </div>
+  `;
+
+
+  if (isReducingBalance && loan.remainingBalance > 0) {
+    const rec = getCurrentLoanRecommendation(loan);
+    html += `
+      <div style="margin-bottom:20px; border:1px solid #ddd; padding:15px; border-radius:8px; background-color: #f8fafc;">
+        <h4 style="margin-top:0; color: #0f172a;">${t("recommended_monthly_payment")}</h4>
+        <table style="width:100%; border-collapse:collapse; font-size:12px;">
+          <tr>
+            <td style="padding:4px 0;"><strong>${t("principal_portion")}:</strong> Rs. ${rec.recommendedPrincipal.toLocaleString("en-IN")}</td>
+            <td style="padding:4px 0;"><strong>${t("interest_portion")}:</strong> Rs. ${rec.currentMonthInterest.toLocaleString("en-IN")}</td>
+            <td style="padding:4px 0;"><strong>${t("total_payable_this_month")}:</strong> Rs. ${rec.recommendedMonthlyPayment.toLocaleString("en-IN")}</td>
+          </tr>
+          <tr>
+            <td style="padding:4px 0;"><strong>${t("remainingMonths") || "Remaining Months"}:</strong> ${rec.remainingMonths} ${t("auto.mo")}</td>
+            <td style="padding:4px 0;"><strong>${t("fixed_principal_installment") || "Fixed Installment"}:</strong> Rs. ${rec.fixedPrincipalInstallment.toLocaleString("en-IN")}</td>
+            <td style="padding:4px 0;">${rec.outstandingInterest > 0 ? `<strong style="color:red;">${t("outstanding_interest_due")}:</strong> <span style="color:red;">Rs. ${rec.outstandingInterest.toLocaleString("en-IN")}</span>` : ''}</td>
+          </tr>
+        </table>
+      </div>
+    `;
+  }
+
+  html += `<table style="width:100%; border-collapse:collapse; margin-bottom:20px; font-size:10px;">
+    <tr style="background:#f1f5f9; border-bottom:2px solid #cbd5e1;">
+      <th style="padding:6px; text-align:left;">${t("receipt_number")}</th>
+      <th style="padding:6px; text-align:left;">${t("date")}</th>
+      <th style="padding:6px; text-align:right;">${t("pdf_opening_principal")}</th>
+      <th style="padding:6px; text-align:right;">${t("pdf_interest_charged")}</th>
+      <th style="padding:6px; text-align:right;">${t("pdf_interest_paid")}</th>
+      <th style="padding:6px; text-align:right;">${t("pdf_principal_paid")}</th>
+      <th style="padding:6px; text-align:right;">${t("pdf_total_payment")}</th>
+      <th style="padding:6px; text-align:right;">${t("pdf_closing_principal")}</th>
+      <th style="padding:6px; text-align:right;">${t("outstanding_interest")}</th>
+      <th style="padding:6px; text-align:left; width: 15%">${t("remarks")}</th>
+    </tr>`;
+
+  for (let i = 0; i < entries.length; i++) {
+    const r = entries[i];
+    const isRowRB = isReducingBalance;
+    const dateStr = formatDate(isRowRB ? (r.transactionDate || r.date) : r.date);
+    
+    html += `<tr style="border-bottom:1px solid #e2e8f0; background: ${i % 2 === 0 ? '#fff' : '#f8fafc'};">
+      <td style="padding:6px;">${r.receiptNo || 'R-'+(i+1)}</td>
+      <td style="padding:6px;">${dateStr}</td>
+      <td style="padding:6px; text-align:right;">${isRowRB ? Math.round(r.openingPrincipal || 0).toLocaleString("en-IN") : '—'}</td>
+      <td style="padding:6px; text-align:right;">${isRowRB ? Math.round(r.interestCharged || 0).toLocaleString("en-IN") : '—'}</td>
+      <td style="padding:6px; text-align:right;">${isRowRB ? Math.round(r.interestPaid || 0).toLocaleString("en-IN") : '—'}</td>
+      <td style="padding:6px; text-align:right;">${isRowRB ? Math.round(r.principalPaid || 0).toLocaleString("en-IN") : '—'}</td>
+      <td style="padding:6px; text-align:right; font-weight:bold;">${isRowRB ? Math.round(r.paymentReceived || 0).toLocaleString("en-IN") : Math.round(r.amount || 0).toLocaleString("en-IN")}</td>
+      <td style="padding:6px; text-align:right;">${isRowRB ? Math.round(r.closingPrincipal || 0).toLocaleString("en-IN") : '—'}</td>
+      <td style="padding:6px; text-align:right;">${isRowRB ? Math.round(r.outstandingInterest || 0).toLocaleString("en-IN") : '—'}</td>
+      <td style="padding:6px; text-align:left;">${isRowRB && r.type === 'disbursement' ? t("ledger_loan_disbursed") : (r.remarks || t("ledger_repayment"))}</td>
+    </tr>`;
+  }
+
+  html += `</table>`;
+  html += getFooterHtml(t);
+  
+  return printOrShareHtml(html, `Loan_Passbook_${member?.name?.replace(/\s+/g, "_") || 'Unknown'}.pdf`, t);
+}

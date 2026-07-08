@@ -95,6 +95,106 @@ export default function MemberDetailScreen() {
     ]);
   };
 
+
+  // ── Unified History Timeline ─────────────
+  const timelineItems: Array<{
+    id: string;
+    type: 'payment' | 'loan_request' | 'loan_repayment' | 'meeting';
+    date: Date;
+    sortDate: number;
+    title: string;
+    subtitle: string;
+    amount?: string;
+    amountBreakdown?: { p: string; i: string; remain: string };
+    receiptNo?: string;
+    recordedBy?: string;
+    statusColor: string;
+    statusLabel: string;
+    routeTo?: { pathname: string; params?: any };
+  }> = [];
+
+  // Add savings
+  memberPayments.forEach(p => {
+    timelineItems.push({
+      id: p.id,
+      type: 'payment',
+      date: new Date(p.date),
+      sortDate: new Date(p.date).getTime(),
+      title: t("dashboard.totalSavings"),
+      subtitle: p.status === "confirmed" ? t("confirmed") : t("pending"),
+      amount: p.amount.toString(),
+      statusColor: p.status === "confirmed" ? Colors.light.success : p.status === "pending" ? Colors.light.pending : Colors.light.danger,
+      statusLabel: t(p.status)
+    });
+  });
+
+  // Add loan requests/approvals
+  memberLoans.forEach(l => {
+    timelineItems.push({
+      id: l.id,
+      type: 'loan_request',
+      date: new Date(l.createdAt),
+      sortDate: new Date(l.createdAt).getTime(),
+      title: t("loans.loanHistory"),
+      subtitle: l.resolutionNumber ? `${t("history.resolution_number")}: ${l.resolutionNumber}` : `${l.interest}% / ${l.duration} ${t("loans.mo")}`,
+      amount: l.amount.toString(),
+      statusColor: l.status === "approved" ? Colors.light.success : l.status === "requested" ? Colors.light.pending : Colors.light.danger,
+      statusLabel: t(l.status),
+      routeTo: { pathname: "/loan/[id]", params: { id: l.id } }
+    });
+    
+    // Add repayments for this loan
+    if (l.calculationMethod === "reducing_balance") {
+      const ledgers = loanLedgers.filter(ledger => ledger.loanId === l.id && ledger.type === "repayment");
+      ledgers.forEach(ledger => {
+        timelineItems.push({
+          id: ledger.id,
+          type: 'loan_repayment',
+          date: new Date(ledger.date),
+          sortDate: new Date(ledger.date).getTime(),
+          title: t("history.loan_repayment"),
+          subtitle: `${l.resolutionNumber ? l.resolutionNumber : l.id.slice(0,6)}`,
+          amount: ledger.paymentReceived.toString(),
+          amountBreakdown: {
+            p: ledger.principalPaid.toString(),
+            i: ledger.interestPaid.toString(),
+            remain: ledger.closingPrincipal.toString()
+          },
+          receiptNo: ledger.receiptNo,
+          recordedBy: groupMembers.find(m => m.id === ledger.recordedBy)?.name || t("history.recorded_by"),
+          statusColor: Colors.light.primary,
+          statusLabel: t("confirmed"),
+          routeTo: { pathname: "/loan/[id]", params: { id: l.id } }
+        });
+      });
+    } else {
+      const reps = loanRepayments.filter(r => r.loanId === l.id);
+      reps.forEach(rep => {
+        timelineItems.push({
+          id: rep.id,
+          type: 'loan_repayment',
+          date: new Date(rep.date),
+          sortDate: new Date(rep.date).getTime(),
+          title: t("history.loan_repayment"),
+          subtitle: `${l.resolutionNumber ? l.resolutionNumber : l.id.slice(0,6)}`,
+          amount: rep.amount.toString(),
+          amountBreakdown: {
+             p: rep.shgAmount.toString(),
+             i: '0',
+             remain: l.remainingBalance.toString()
+          },
+          receiptNo: `REP-${rep.id.slice(0,6)}`,
+          recordedBy: groupMembers.find(m => m.id === rep.recordedBy)?.name || t("history.recorded_by"),
+          statusColor: Colors.light.primary,
+          statusLabel: t("confirmed"),
+          routeTo: { pathname: "/loan/[id]", params: { id: l.id } }
+        });
+      });
+    }
+  });
+
+  timelineItems.sort((a, b) => b.sortDate - a.sortDate);
+
   return (
     <ScrollView
       style={styles.container}
@@ -217,71 +317,53 @@ export default function MemberDetailScreen() {
       </View>
 
       <View style={styles.historySection}>
-        <Text style={styles.historySectionTitle}>{t("payments.paymentHistory")}</Text>
-        {memberPayments.length === 0 ? (
+        <Text style={styles.historySectionTitle}>{t("pdf_detailed_transactions")}</Text>
+        {timelineItems.length === 0 ? (
           <View style={styles.emptySection}>
             <Text style={styles.emptySectionText}>{t("noPayments")}</Text>
           </View>
         ) : (
-          memberPayments
-            .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-            .slice(0, 10)
-            .map((p) => {
-              const statusColor = p.status === "confirmed" ? Colors.light.success
-                : p.status === "pending" ? Colors.light.pending : Colors.light.danger;
-              return (
-                <View key={p.id} style={styles.historyRow}>
-                  <View style={[styles.historyDot, { backgroundColor: statusColor }]} />
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.historyRowDate}>{formatDisplayDate(p.date)}</Text>
-                    <Text style={[styles.historyRowStatus, { color: statusColor }]}>{t(p.status)}</Text>
-                  </View>
-                  <Text style={styles.historyRowAmount}>Rs. {p.amount}</Text>
+          timelineItems.slice(0, 20).map((item) => (
+            <Pressable
+              key={item.id}
+              style={[styles.historyRow, { flexDirection: 'column', alignItems: 'stretch' }]}
+              onPress={() => item.routeTo && router.push(item.routeTo as any)}
+              disabled={!item.routeTo}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <View style={[styles.historyDot, { backgroundColor: item.statusColor }]} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.historyRowDate}>{formatDisplayDate(item.date.toISOString())} - {item.title}</Text>
+                  <Text style={[styles.historyRowStatus, { color: item.statusColor }]}>{item.statusLabel}</Text>
+                  {item.subtitle && <Text style={styles.historyRowMeta}>{item.subtitle}</Text>}
                 </View>
-              );
-            })
+                <View style={{ alignItems: "flex-end" }}>
+                  <Text style={styles.historyRowAmount}>Rs. {item.amount}</Text>
+                  {item.routeTo && <Ionicons name="chevron-forward" size={14} color={Colors.light.textMuted} />}
+                </View>
+              </View>
+              {item.type === 'loan_repayment' && item.amountBreakdown && (
+                <View style={{ marginTop: 8, paddingLeft: 20 }}>
+                   <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                      <Text style={{ fontSize: 12, color: Colors.light.textSecondary }}>{t("history.principal_portion")}: Rs. {item.amountBreakdown.p}</Text>
+                      <Text style={{ fontSize: 12, color: Colors.light.textSecondary }}>{t("history.interest_portion")}: Rs. {item.amountBreakdown.i}</Text>
+                   </View>
+                   <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 4 }}>
+                      <Text style={{ fontSize: 12, color: Colors.light.textSecondary }}>{t("history.remaining_principal")}: Rs. {item.amountBreakdown.remain}</Text>
+                      {item.receiptNo && <Text style={{ fontSize: 12, color: Colors.light.textSecondary }}>{t("history.receipt_number")}: {item.receiptNo}</Text>}
+                   </View>
+                   <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 4 }}>
+                      {item.recordedBy && <Text style={{ fontSize: 12, color: Colors.light.textSecondary }}>{t("history.recorded_by")}: {item.recordedBy}</Text>}
+                   </View>
+                </View>
+              )}
+            </Pressable>
+          ))
         )}
-        {memberPayments.length > 10 && (
+        {timelineItems.length > 20 && (
           <Text style={styles.showMoreText}>
-            {`${t("common.more_plus")} ${memberPayments.length - 10}`}
+            {`${t("common.more_plus")} ${timelineItems.length - 20}`}
           </Text>
-        )}
-      </View>
-
-      <View style={styles.historySection}>
-        <Text style={styles.historySectionTitle}>{t("loans.loanHistory")}</Text>
-        {memberLoans.length === 0 ? (
-          <View style={styles.emptySection}>
-            <Text style={styles.emptySectionText}>{t("noLoans")}</Text>
-          </View>
-        ) : (
-          memberLoans
-            .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-            .map((l) => {
-              const statusColor = l.status === "approved" ? Colors.light.success
-                : l.status === "requested" ? Colors.light.pending : Colors.light.danger;
-              return (
-                <Pressable
-                  key={l.id}
-                  style={styles.historyRow}
-                  onPress={() => router.push({ pathname: "/loan/[id]", params: { id: l.id } })}
-                >
-                  <View style={[styles.historyDot, { backgroundColor: statusColor }]} />
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.historyRowDate}>{formatDisplayDate(l.createdAt)}</Text>
-                    <Text style={[styles.historyRowStatus, { color: statusColor }]}>{t(l.status)}</Text>
-                    {l.status === "approved" && l.remainingBalance > 0 && (
-                      <Text style={styles.historyRowMeta}>{t("remaining")}: Rs. {l.remainingBalance}</Text>
-                    )}
-                  </View>
-                  <View style={{ alignItems: "flex-end" }}>
-                    <Text style={styles.historyRowAmount}>Rs. {l.amount}</Text>
-                    <Text style={styles.historyRowMeta}>{l.interest}% / {l.duration} {t("loans.mo")}</Text>
-                  </View>
-                  <Ionicons name="chevron-forward" size={14} color={Colors.light.textMuted} />
-                </Pressable>
-              );
-            })
         )}
       </View>
 
