@@ -183,6 +183,7 @@ export default function MoreScreen() {
           <MenuItem icon="people" label={t("members")} onPress={() => router.push("/members")} />
           <MenuItem icon="document-text" label={t("groupRules")} onPress={() => router.push("/rules")} />
           <MenuItem icon="cash" label={t("loans")} onPress={() => router.push("/loans")} />
+          <MenuItem icon="business" label={t("bankLoans")} onPress={() => router.push("/bank-loans" as any)} color="#D97706" />
           <MenuItem
             icon="time"
             label={t("auto.history")}

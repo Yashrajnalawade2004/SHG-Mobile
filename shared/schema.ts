@@ -118,10 +118,6 @@ export const payments = pgTable("payments", {
   paymentGroupMemberMonthIdx: index("payment_group_member_month_idx").on(t.groupId, t.memberId, t.month),
 }));
 
-// ─── AFFILIATED BANKS ────────────────────────────────────────────────────────
-// Each SHG can register affiliated banks for bank-assisted loans.
-// These are managed by the President in SHG Settings.
-
 export const affiliatedBanks = pgTable("affiliated_banks", {
   id: varchar("id", { length: 36 })
     .primaryKey()
@@ -139,10 +135,6 @@ export const affiliatedBanks = pgTable("affiliated_banks", {
 }, (t) => ({
   bankGroupIdx: index("bank_group_idx").on(t.groupId),
 }));
-
-// ─── LOANS ───────────────────────────────────────────────────────────────────
-// Bank-assisted loan fields are all optional/nullable.
-// If hasBankLoan = false (default), existing workflow is 100% unchanged.
 
 export const loans = pgTable("loans", {
   id: varchar("id", { length: 36 })
@@ -170,33 +162,32 @@ export const loans = pgTable("loans", {
   overrideReason: text("override_reason"),
   overrideAt: timestamp("override_at"),
 
-  // ── Bank-Assisted Loan fields (all optional — backward compatible) ──────────
   hasBankLoan: boolean("has_bank_loan").notNull().default(false),
-  bankId: varchar("bank_id", { length: 36 }),          // references affiliated_banks.id
-  bankName: text("bank_name"),                          // denormalized for display/reports
-  bankLoanAmount: integer("bank_loan_amount"),          // bank principal
-  bankInterestRate: real("bank_interest_rate"),         // % per month
-  bankDuration: integer("bank_duration"),               // months
-  bankRemainingBalance: integer("bank_remaining_balance"), // tracks separately
+  bankId: varchar("bank_id", { length: 36 }),
+  bankName: text("bank_name"),
+  bankLoanAmount: integer("bank_loan_amount"),
+  bankInterestRate: real("bank_interest_rate"),
+  bankDuration: integer("bank_duration"),
+  bankRemainingBalance: integer("bank_remaining_balance"),
   bankLoanStartDate: timestamp("bank_loan_start_date"),
   bankLoanRemarks: text("bank_loan_remarks"),
+  
+  calculationMethod: varchar("calculation_method", { length: 20 }).notNull().default("legacy"),
+  totalPrincipalPaid: integer("total_principal_paid").notNull().default(0),
+  totalInterestPaid: integer("total_interest_paid").notNull().default(0),
+  outstandingInterest: integer("outstanding_interest").notNull().default(0),
 }, (t) => ({
   loanMemberIdx: index("loan_member_idx").on(t.memberId),
 }));
-
-// ─── LOAN REPAYMENTS ─────────────────────────────────────────────────────────
-// Extended with shgAmount and bankAmount for split repayments.
-// amount = shgAmount + bankAmount (kept for backward compat).
-// For old repayments: shgAmount = amount, bankAmount = 0.
 
 export const loanRepayments = pgTable("loan_repayments", {
   id: varchar("id", { length: 36 })
     .primaryKey()
     .default(sql`gen_random_uuid()`),
   loanId: varchar("loan_id", { length: 36 }).notNull(),
-  amount: integer("amount").notNull(),          // total = shgAmount + bankAmount
-  shgAmount: integer("shg_amount").notNull().default(0),   // SHG portion
-  bankAmount: integer("bank_amount").notNull().default(0),  // Bank pass-through
+  amount: integer("amount").notNull(),
+  shgAmount: integer("shg_amount").notNull().default(0),
+  bankAmount: integer("bank_amount").notNull().default(0),
   date: timestamp("date").notNull().default(sql`now()`),
   recordedBy: varchar("recorded_by", { length: 36 }).notNull(),
   remarks: text("remarks"),
@@ -220,3 +211,93 @@ export const cronLocks = pgTable("cron_locks", {
 export type InvitationCode = typeof invitationCodes.$inferSelect;
 export type InvitationCodeUsage = typeof invitationCodeUsage.$inferSelect;
 export type AffiliatedBank = typeof affiliatedBanks.$inferSelect;
+
+export const loanLedger = pgTable("loan_ledger", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  loanId: varchar("loan_id", { length: 36 }).notNull(),
+  receiptNo: varchar("receipt_no", { length: 50 }).notNull(),
+  date: timestamp("date").notNull().default(sql`now()`),
+  openingPrincipal: integer("opening_principal").notNull(),
+  interestRateApplied: real("interest_rate_applied").notNull(),
+  interestCharged: integer("interest_charged").notNull(),
+  interestPaid: integer("interest_paid").notNull(),
+  principalPaid: integer("principal_paid").notNull(),
+  paymentReceived: integer("payment_received").notNull(),
+  closingPrincipal: integer("closing_principal").notNull(),
+  outstandingInterest: integer("outstanding_interest").notNull(),
+  remarks: text("remarks"),
+  recordedBy: varchar("recorded_by", { length: 36 }).notNull(),
+  type: varchar("type", { length: 20 }).notNull().default("repayment"),
+  createdAt: timestamp("created_at").notNull().default(sql`now()`),
+}, (t) => ({
+  ledgerLoanIdx: index("ledger_loan_idx").on(t.loanId),
+}));
+
+export const groupBankLoans = pgTable("group_bank_loans", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  groupId: varchar("group_id", { length: 36 }).notNull(),
+  bankName: text("bank_name").notNull(),
+  branch: text("branch"),
+  accountNumber: varchar("account_number", { length: 50 }),
+  sanctionDate: timestamp("sanction_date").notNull(),
+  amount: integer("amount").notNull(),
+  annualInterestRate: real("annual_interest_rate").notNull(),
+  durationMonths: integer("duration_months").notNull(),
+  repaymentStartDate: timestamp("repayment_start_date"),
+  remarks: text("remarks"),
+  status: varchar("status", { length: 30 }).notNull().default("active"),
+  createdBy: varchar("created_by", { length: 36 }).notNull(),
+  createdAt: timestamp("created_at").notNull().default(sql`now()`),
+});
+
+export const bankLoanAllocations = pgTable("bank_loan_allocations", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  bankLoanId: varchar("bank_loan_id", { length: 36 }).notNull(),
+  memberId: varchar("member_id", { length: 36 }).notNull(),
+  allocatedPrincipal: integer("allocated_principal").notNull(),
+  totalPrincipalPaid: integer("total_principal_paid").notNull().default(0),
+  totalInterestPaid: integer("total_interest_paid").notNull().default(0),
+  outstandingBalance: integer("outstanding_balance").notNull(),
+  outstandingInterest: integer("outstanding_interest").notNull().default(0),
+  status: varchar("status", { length: 30 }).notNull().default("active"),
+}, (t) => ({
+  allocationBankIdx: index("allocation_bank_idx").on(t.bankLoanId),
+  allocationMemberIdx: index("allocation_member_idx").on(t.memberId),
+}));
+
+export const bankLoanRepayments = pgTable("bank_loan_repayments", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  allocationId: varchar("allocation_id", { length: 36 }).notNull(),
+  receiptNo: varchar("receipt_no", { length: 50 }).notNull(),
+  amount: integer("amount").notNull(),
+  date: timestamp("date").notNull().default(sql`now()`),
+  recordedBy: varchar("recorded_by", { length: 36 }).notNull(),
+  remarks: text("remarks"),
+});
+
+export const bankLoanLedger = pgTable("bank_loan_ledger", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  allocationId: varchar("allocation_id", { length: 36 }).notNull(),
+  receiptNo: varchar("receipt_no", { length: 50 }).notNull(),
+  type: varchar("type", { length: 20 }).notNull().default("repayment"),
+  date: timestamp("date").notNull().default(sql`now()`),
+  openingPrincipal: integer("opening_principal").notNull(),
+  interestRateApplied: real("interest_rate_applied").notNull(),
+  interestCharged: integer("interest_charged").notNull(),
+  interestPaid: integer("interest_paid").notNull(),
+  principalPaid: integer("principal_paid").notNull(),
+  paymentReceived: integer("payment_received").notNull(),
+  closingPrincipal: integer("closing_principal").notNull(),
+  outstandingInterest: integer("outstanding_interest").notNull(),
+  remarks: text("remarks"),
+  recordedBy: varchar("recorded_by", { length: 36 }).notNull(),
+  createdAt: timestamp("created_at").notNull().default(sql`now()`),
+}, (t) => ({
+  bankLedgerAllocIdx: index("bank_ledger_alloc_idx").on(t.allocationId),
+}));
+
+export type GroupBankLoan = typeof groupBankLoans.$inferSelect;
+export type BankLoanAllocation = typeof bankLoanAllocations.$inferSelect;
+export type BankLoanRepayment = typeof bankLoanRepayments.$inferSelect;
+export type BankLoanLedgerEntry = typeof bankLoanLedger.$inferSelect;
+export type LoanLedgerEntry = typeof loanLedger.$inferSelect;

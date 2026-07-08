@@ -4,8 +4,10 @@ import { createServer, type Server } from "node:http";
 import { storage } from "./storage";
 import { registerSuperAdminRoutes } from "./super-admin-routes";
 import { registerInvitationRoutes } from "./invitation-routes";
-import { resolveRepaymentAmounts } from "../shared/accounting";
+import { resolveRepaymentAmounts, calculateNextLedgerEntry } from "../shared/accounting";
 import Groq from "groq-sdk";
+import { getDb } from "./db";
+import * as schema from "../shared/schema";
 
 export interface AuthRequest extends Request {
   currentUser?: Awaited<ReturnType<typeof storage.getUserById>>;
@@ -832,6 +834,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         bankDuration: undefined,
         bankRemainingBalance: undefined,
         bankLoanRemarks: undefined,
+        calculationMethod: "reducing_balance", // Default new loans to reducing balance
+        totalPrincipalPaid: 0,
+        totalInterestPaid: 0,
+        outstandingInterest: 0,
       } as any);
       return res.status(201).json(loan);
     },
@@ -973,6 +979,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const updated = await storage.updateLoan(loanId, updateData);
+
+      // Create Day 0 ledger entry for reducing balance loans upon approval
+      if (updated.calculationMethod === 'reducing_balance') {
+        const db = getDb();
+        const ledgerId = crypto.randomUUID();
+        const receiptNo = `DISB-${loanId.substring(0, 8).toUpperCase()}`;
+        
+        await db.insert(schema.loanLedger).values({
+          id: ledgerId,
+          loanId: loanId,
+          receiptNo: receiptNo,
+          openingPrincipal: 0,
+          interestRateApplied: updated.interest,
+          interestCharged: 0,
+          interestPaid: 0,
+          principalPaid: 0,
+          paymentReceived: 0,
+          closingPrincipal: updated.amount,
+          outstandingInterest: 0,
+          date: new Date(),
+          type: "disbursement",
+          recordedBy: req.currentUser!.id
+        });
+      }
+
       return res.json(updated);
     },
   );
@@ -1045,6 +1076,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
     },
   );
 
+  app.get(
+    "/api/loans/:loanId/ledger",
+    requireAuth as any,
+    async (req: AuthRequest, res) => {
+      const { loanId } = req.params;
+      const loan = await storage.getLoanById(loanId);
+      if (!loan || loan.groupId !== req.currentUser!.groupId) {
+        return res.status(404).json({ error: "Loan not found" });
+      }
+      const ledger = await storage.getLoanLedger(loanId);
+      return res.json(ledger);
+    },
+  );
+
+  app.get(
+    "/api/groups/:groupId/loan-ledger",
+    requireAuth as any,
+    async (req: AuthRequest, res) => {
+      const { groupId } = req.params;
+      if (req.currentUser!.groupId !== groupId) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+      const ledger = await storage.getLoanLedgerByGroupId(groupId);
+      return res.json(ledger);
+    },
+  );
+
   app.post(
     "/api/loans/:loanId/repayments",
     requireAuth as any,
@@ -1069,35 +1127,87 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!loan.hasBankLoan && bank > 0)
         return res.status(400).json({ error: "This loan does not have a bank component" });
 
-      const repayment = await storage.createRepayment({
-        loanId,
-        amount: shg + bank,
-        shgAmount: shg,
-        bankAmount: bank,
-        date: new Date(),
-        recordedBy: req.currentUser!.id,
-        remarks: remarks?.trim() || undefined,
-      });
+      // If this is a reducing balance loan, use atomic transaction and ledger
+      if (loan.calculationMethod === "reducing_balance") {
+        // Calculate ledger
+        const groupSettings = await storage.getGroupSettings(loan.groupId);
+        const policy = (groupSettings as any).unpaidInterestPolicy || 'due'; // fallback
+        
+        // Find how many months have elapsed since last payment, or since approval
+        // A simple approach is just charging 1 month of interest every repayment.
+        // Or strictly time-based. For now, the accounting function assumes 1 period.
+        const ledger = calculateNextLedgerEntry(
+          { remainingBalance: loan.remainingBalance, outstandingInterest: loan.outstandingInterest || 0 },
+          shg,
+          loan.interest,
+          loan.duration, // Note: remaining months could be tracked, but using total is fine for pure reducing balance
+          policy
+        );
 
-      // Update SHG remaining balance (bank balance is tracked separately)
-      if (shg > 0) {
-        const allRepayments = await storage.getRepaymentsByLoanId(loanId);
-        const totalShgRepaid = allRepayments.reduce((s, r) => s + resolveRepaymentAmounts(r).shgAmount, 0);
-        const shgTotal = loan.amount + Math.round(loan.amount * (loan.interest / 100) * loan.duration);
-        const newBalance = Math.max(0, shgTotal - totalShgRepaid);
-        await storage.updateLoan(loanId, { remainingBalance: newBalance });
+        const repayment = await storage.recordLoanRepayment(
+          {
+            loanId,
+            amount: shg + bank,
+            shgAmount: shg,
+            bankAmount: bank,
+            date: new Date().toISOString(),
+            recordedBy: req.currentUser!.id,
+            remarks: remarks?.trim() || undefined,
+          },
+          {
+            loanId,
+            receiptNo: `REP-${loanId.substring(0, 8).toUpperCase()}-${Date.now().toString().slice(-4)}`,
+            openingPrincipal: ledger.openingPrincipal,
+            interestRateApplied: loan.interest,
+            interestCharged: ledger.interestCharged,
+            interestPaid: ledger.interestPaid,
+            principalPaid: ledger.principalPaid,
+            paymentReceived: ledger.paymentReceived,
+            closingPrincipal: ledger.closingPrincipal,
+            outstandingInterest: ledger.outstandingInterest,
+            date: new Date(),
+            type: "repayment",
+            recordedBy: req.currentUser!.id
+          },
+          {
+            remainingBalance: ledger.closingPrincipal,
+            outstandingInterest: ledger.outstandingInterest,
+            totalPrincipalPaid: (loan.totalPrincipalPaid || 0) + ledger.principalPaid,
+            totalInterestPaid: (loan.totalInterestPaid || 0) + ledger.interestPaid,
+          }
+        );
+      } else {
+        // Legacy flat interest logic
+        const repayment = await storage.createRepayment({
+          loanId,
+          amount: shg + bank,
+          shgAmount: shg,
+          bankAmount: bank,
+          date: new Date(),
+          recordedBy: req.currentUser!.id,
+          remarks: remarks?.trim() || undefined,
+        });
+
+        if (shg > 0) {
+          const allRepayments = await storage.getRepaymentsByLoanId(loanId);
+          const totalShgRepaid = allRepayments.reduce((s, r) => s + resolveRepaymentAmounts(r).shgAmount, 0);
+          const shgTotal = loan.amount + Math.round(loan.amount * (loan.interest / 100) * loan.duration);
+          const newBalance = Math.max(0, shgTotal - totalShgRepaid);
+          await storage.updateLoan(loanId, { remainingBalance: newBalance });
+        }
+
+        if (bank > 0 && loan.hasBankLoan) {
+          const allRepayments = await storage.getRepaymentsByLoanId(loanId);
+          const totalBankRepaid = allRepayments.reduce((s, r) => s + resolveRepaymentAmounts(r).bankAmount, 0);
+          const bankTotal = (loan.bankLoanAmount || 0) + Math.round((loan.bankLoanAmount || 0) * ((loan.bankInterestRate || 0) / 100) * (loan.bankDuration || 0));
+          const newBankBalance = Math.max(0, bankTotal - totalBankRepaid);
+          await storage.updateLoan(loanId, { bankRemainingBalance: newBankBalance });
+        }
       }
 
-      // Update bank remaining balance independently
-      if (bank > 0 && loan.hasBankLoan) {
-        const allRepayments = await storage.getRepaymentsByLoanId(loanId);
-        const totalBankRepaid = allRepayments.reduce((s, r) => s + resolveRepaymentAmounts(r).bankAmount, 0);
-        const bankTotal = (loan.bankLoanAmount || 0) + Math.round((loan.bankLoanAmount || 0) * ((loan.bankInterestRate || 0) / 100) * (loan.bankDuration || 0));
-        const newBankBalance = Math.max(0, bankTotal - totalBankRepaid);
-        await storage.updateLoan(loanId, { bankRemainingBalance: newBankBalance });
-      }
-
-      return res.status(201).json(repayment);
+      // Return the updated loan and repayment
+      const updatedLoan = await storage.getLoanById(loanId);
+      return res.status(201).json({ success: true, loan: updatedLoan, repayment });
     },
   );
 
@@ -1115,6 +1225,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const loan = await storage.getLoanById(repayment.loanId);
       if (!loan || loan.groupId !== req.currentUser!.groupId) {
         return res.status(404).json({ error: "Loan not found" });
+      }
+
+      if (loan.calculationMethod === "reducing_balance") {
+        return res.status(400).json({ error: "Repayments for reducing balance loans are immutable and cannot be deleted." });
       }
 
       await storage.deleteRepayment(repaymentId);
@@ -1336,6 +1450,232 @@ Reply with ONLY a JSON object, no markdown, no explanation:
     },
   );
 
+
+  // ─── GROUP BANK LOAN MODULE ───────────────────────────────────────────────
+
+  app.get(
+    "/api/groups/:groupId/bank-loans",
+    requireAuth as any,
+    async (req: AuthRequest, res) => {
+      const { groupId } = req.params;
+      const bankLoans = await storage.getGroupBankLoansByGroupId(groupId);
+      return res.json(bankLoans);
+    }
+  );
+
+  app.post(
+    "/api/groups/:groupId/bank-loans",
+    requireAuth as any,
+    requirePresident as any,
+    async (req: AuthRequest, res) => {
+      const { groupId } = req.params;
+      const { bankName, branch, accountNumber, sanctionDate, amount, annualInterestRate, durationMonths, repaymentStartDate, remarks } = req.body;
+      const loan = await storage.createGroupBankLoan({
+        groupId,
+        bankName,
+        branch,
+        accountNumber,
+        sanctionDate: new Date(sanctionDate),
+        amount,
+        annualInterestRate,
+        durationMonths,
+        repaymentStartDate: repaymentStartDate ? new Date(repaymentStartDate) : null,
+        remarks,
+        status: "active",
+        createdBy: req.currentUser!.id
+      });
+      return res.status(201).json(loan);
+    }
+  );
+
+  app.patch(
+    "/api/bank-loans/:id",
+    requireAuth as any,
+    requirePresident as any,
+    async (req: AuthRequest, res) => {
+      const { id } = req.params;
+      const updates = { ...req.body };
+      if (updates.sanctionDate) updates.sanctionDate = new Date(updates.sanctionDate);
+      if (updates.repaymentStartDate) updates.repaymentStartDate = new Date(updates.repaymentStartDate);
+      const loan = await storage.updateGroupBankLoan(id, updates);
+      return res.json(loan);
+    }
+  );
+
+  app.patch(
+    "/api/bank-loans/:id/close",
+    requireAuth as any,
+    requirePresident as any,
+    async (req: AuthRequest, res) => {
+      const { id } = req.params;
+      const loan = await storage.updateGroupBankLoan(id, { status: "completed" });
+      return res.json(loan);
+    }
+  );
+
+  app.get(
+    "/api/bank-loans/:id/allocations",
+    requireAuth as any,
+    async (req: AuthRequest, res) => {
+      const { id } = req.params;
+      const allocations = await storage.getBankLoanAllocationsByLoanId(id);
+      return res.json(allocations);
+    }
+  );
+
+  app.get(
+    "/api/groups/:groupId/bank-loan-allocations",
+    requireAuth as any,
+    async (req: AuthRequest, res) => {
+      const { groupId } = req.params;
+      const allocations = await storage.getBankLoanAllocationsByGroupId(groupId);
+      return res.json(allocations);
+    }
+  );
+
+  app.get(
+    "/api/groups/:groupId/bank-loan-ledger",
+    requireAuth as any,
+    async (req: AuthRequest, res) => {
+      const { groupId } = req.params;
+      const ledgers = await storage.getGroupBankLoanLedgerByGroupId(groupId);
+      return res.json(ledgers);
+    }
+  );
+
+  app.post(
+    "/api/bank-loans/:id/allocations",
+    requireAuth as any,
+    requirePresident as any,
+    async (req: AuthRequest, res) => {
+      const { id } = req.params;
+      const { allocations } = req.body; // Array of { memberId, allocatedPrincipal }
+      
+      const bankLoan = await storage.getGroupBankLoanById(id);
+      if (!bankLoan) return res.status(404).json({ error: "Bank loan not found" });
+
+      const existingAllocations = await storage.getBankLoanAllocationsByLoanId(id);
+      const totalAllocatedSoFar = existingAllocations.reduce((sum, a) => sum + a.allocatedPrincipal, 0);
+      
+      const newTotal = allocations.reduce((sum: number, a: any) => sum + Number(a.allocatedPrincipal), 0);
+      
+      if (totalAllocatedSoFar + newTotal > bankLoan.amount) {
+        return res.status(400).json({ error: "Total allocations exceed sanctioned bank loan amount" });
+      }
+
+      const allocsToInsert = [];
+      const ledgersToInsert = [];
+      
+      for (const a of allocations) {
+        allocsToInsert.push({
+          bankLoanId: id,
+          memberId: a.memberId,
+          allocatedPrincipal: Number(a.allocatedPrincipal),
+          outstandingBalance: Number(a.allocatedPrincipal)
+        });
+        
+        ledgersToInsert.push({
+          receiptNo: `DISB-BL-${id.substring(0,6)}`,
+          type: "disbursement",
+          date: new Date(),
+          openingPrincipal: 0,
+          interestRateApplied: 0,
+          interestCharged: 0,
+          interestPaid: 0,
+          principalPaid: 0,
+          paymentReceived: 0,
+          closingPrincipal: Number(a.allocatedPrincipal),
+          outstandingInterest: 0,
+          remarks: "Initial Disbursement",
+          recordedBy: req.currentUser!.id
+        });
+      }
+
+      await storage.allocateBankLoanFunds(allocsToInsert, ledgersToInsert as any[]);
+      
+      const allAllocations = await storage.getBankLoanAllocationsByLoanId(id);
+      return res.status(201).json(allAllocations);
+    }
+  );
+
+  app.post(
+    "/api/bank-loan-allocations/:id/repayments",
+    requireAuth as any,
+    requirePresidentOrTreasurer as any,
+    async (req: AuthRequest, res) => {
+      const { id } = req.params;
+      const { amount, date, remarks } = req.body;
+      
+      const allocation = await storage.getBankLoanAllocationById(id);
+      if (!allocation) return res.status(404).json({ error: "Allocation not found" });
+      
+      const bankLoan = await storage.getGroupBankLoanById(allocation.bankLoanId);
+      if (!bankLoan) return res.status(404).json({ error: "Bank loan not found" });
+
+      // Accounting Engine
+      const monthlyRate = bankLoan.annualInterestRate / 12;
+      const interestCharged = Math.round(allocation.outstandingBalance * (monthlyRate / 100));
+      
+      const totalInterestDue = allocation.outstandingInterest + interestCharged;
+      
+      let interestPaid = 0;
+      let principalPaid = 0;
+      let paymentRemaining = Number(amount);
+      
+      // Pay interest first
+      if (paymentRemaining >= totalInterestDue) {
+        interestPaid = totalInterestDue;
+        paymentRemaining -= totalInterestDue;
+      } else {
+        interestPaid = paymentRemaining;
+        paymentRemaining = 0;
+      }
+      
+      // Remaining to principal
+      principalPaid = paymentRemaining;
+      
+      const newOutstandingInterest = totalInterestDue - interestPaid;
+      const newOutstandingBalance = Math.max(0, allocation.outstandingBalance - principalPaid);
+      
+      const receiptNo = `REC-BL-${Date.now().toString().slice(-6)}`;
+      
+      const repayment = {
+        allocationId: id,
+        receiptNo,
+        amount: Number(amount),
+        recordedBy: req.currentUser!.id,
+        remarks: remarks || "Repayment"
+      };
+      
+      const ledgerEntry = {
+        allocationId: id,
+        receiptNo,
+        type: "repayment",
+        date: new Date(date || Date.now()),
+        openingPrincipal: allocation.outstandingBalance,
+        interestRateApplied: monthlyRate,
+        interestCharged,
+        interestPaid,
+        principalPaid,
+        paymentReceived: Number(amount),
+        closingPrincipal: newOutstandingBalance,
+        outstandingInterest: newOutstandingInterest,
+        remarks: remarks || "",
+        recordedBy: req.currentUser!.id
+      };
+      
+      const snapshotUpdate = {
+        outstandingBalance: newOutstandingBalance,
+        outstandingInterest: newOutstandingInterest,
+        totalPrincipalPaid: allocation.totalPrincipalPaid + principalPaid,
+        totalInterestPaid: allocation.totalInterestPaid + interestPaid,
+        status: newOutstandingBalance <= 0 && newOutstandingInterest <= 0 ? "completed" : "active"
+      };
+
+      const recordedRepayment = await storage.recordBankLoanRepayment(repayment, ledgerEntry as any, snapshotUpdate);
+      return res.status(201).json(recordedRepayment);
+    }
+  );
   const httpServer = createServer(app);
   return httpServer;
 }

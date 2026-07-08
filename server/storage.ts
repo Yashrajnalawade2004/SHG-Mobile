@@ -826,6 +826,118 @@ export class DatabaseStorage implements IStorage {
   async deleteBank(id: string): Promise<void> {
     await this.db.delete(schema.affiliatedBanks).where(eq(schema.affiliatedBanks.id, id));
   }
+
+  // --- Group Bank Loans Implementation ---
+  
+  async getGroupBankLoansByGroupId(groupId: string): Promise<GroupBankLoan[]> {
+    return await this.db.select().from(schema.groupBankLoans).where(eq(schema.groupBankLoans.groupId, groupId));
+  }
+  
+  async getGroupBankLoanById(id: string): Promise<GroupBankLoan | undefined> {
+    const rows = await this.db.select().from(schema.groupBankLoans).where(eq(schema.groupBankLoans.id, id));
+    return rows[0];
+  }
+  
+  async createGroupBankLoan(loan: Omit<GroupBankLoan, "id" | "createdAt">): Promise<GroupBankLoan> {
+    const id = randomUUID();
+// @ts-expect-error
+    await this.db.insert(schema.groupBankLoans).values({ ...loan, id });
+    const rows = await this.db.select().from(schema.groupBankLoans).where(eq(schema.groupBankLoans.id, id));
+    return rows[0];
+  }
+  
+  async updateGroupBankLoan(id: string, data: Partial<GroupBankLoan>): Promise<GroupBankLoan | undefined> {
+// @ts-expect-error
+    await this.db.update(schema.groupBankLoans).set(data).where(eq(schema.groupBankLoans.id, id));
+    return this.getGroupBankLoanById(id);
+  }
+  
+  async getBankLoanAllocationsByLoanId(bankLoanId: string): Promise<BankLoanAllocation[]> {
+    return await this.db.select().from(schema.bankLoanAllocations).where(eq(schema.bankLoanAllocations.bankLoanId, bankLoanId));
+  }
+  
+  async getBankLoanAllocationById(id: string): Promise<BankLoanAllocation | undefined> {
+    const rows = await this.db.select().from(schema.bankLoanAllocations).where(eq(schema.bankLoanAllocations.id, id));
+    return rows[0];
+  }
+  
+  async getBankLoanAllocationsByGroupId(groupId: string): Promise<BankLoanAllocation[]> {
+    const rows = await this.db
+      .select({ alloc: schema.bankLoanAllocations })
+      .from(schema.bankLoanAllocations)
+      .innerJoin(schema.groupBankLoans, eq(schema.bankLoanAllocations.bankLoanId, schema.groupBankLoans.id))
+      .where(eq(schema.groupBankLoans.groupId, groupId));
+    return rows.map(r => r.alloc);
+  }
+
+  async allocateBankLoanFunds(
+    allocations: Omit<BankLoanAllocation, "id" | "totalPrincipalPaid" | "totalInterestPaid" | "outstandingInterest" | "status">[],
+    ledgers: Omit<BankLoanLedgerEntry, "id" | "createdAt">[]
+  ): Promise<void> {
+    await this.db.transaction(async (tx) => {
+      for (let i = 0; i < allocations.length; i++) {
+        const alloc = allocations[i];
+        const ledger = ledgers[i];
+        const allocId = randomUUID();
+// @ts-expect-error
+        await tx.insert(schema.bankLoanAllocations).values({
+          ...alloc,
+          id: allocId,
+          totalPrincipalPaid: 0,
+          totalInterestPaid: 0,
+          outstandingInterest: 0,
+          status: "active"
+        });
+        
+        const ledgerId = randomUUID();
+// @ts-expect-error
+        await tx.insert(schema.bankLoanLedger).values({
+          ...ledger,
+          id: ledgerId,
+          allocationId: allocId
+        });
+      }
+    });
+  }
+
+  async getBankLoanLedger(allocationId: string): Promise<BankLoanLedgerEntry[]> {
+    return await this.db.select().from(schema.bankLoanLedger).where(eq(schema.bankLoanLedger.allocationId, allocationId));
+  }
+
+  async getGroupBankLoanLedgerByGroupId(groupId: string): Promise<BankLoanLedgerEntry[]> {
+    const ledgers = await this.db
+      .select({ ledger: schema.bankLoanLedger })
+      .from(schema.bankLoanLedger)
+      .innerJoin(schema.bankLoanAllocations, eq(schema.bankLoanLedger.allocationId, schema.bankLoanAllocations.id))
+      .innerJoin(schema.groupBankLoans, eq(schema.bankLoanAllocations.bankLoanId, schema.groupBankLoans.id))
+      .where(eq(schema.groupBankLoans.groupId, groupId));
+    return ledgers.map(l => l.ledger);
+  }
+
+  async recordBankLoanRepayment(
+    repayment: Omit<BankLoanRepayment, "id" | "date">,
+    ledgerEntry: Omit<BankLoanLedgerEntry, "id" | "createdAt">,
+    snapshotUpdate: { outstandingBalance: number; outstandingInterest: number; totalPrincipalPaid: number; totalInterestPaid: number }
+  ): Promise<BankLoanRepayment> {
+    let repId = "";
+    await this.db.transaction(async (tx) => {
+      repId = randomUUID();
+// @ts-expect-error
+      await tx.insert(schema.bankLoanRepayments).values({ ...repayment, id: repId });
+      
+      const ledgerId = randomUUID();
+// @ts-expect-error
+      await tx.insert(schema.bankLoanLedger).values({ ...ledgerEntry, id: ledgerId });
+      
+// @ts-expect-error
+      await tx.update(schema.bankLoanAllocations)
+        .set(snapshotUpdate)
+        .where(eq(schema.bankLoanAllocations.id, repayment.allocationId));
+    });
+    
+    const rows = await this.db.select().from(schema.bankLoanRepayments).where(eq(schema.bankLoanRepayments.id, repId));
+    return rows[0];
+  }
 }
 
 export const storage: IStorage = (process.env.SUPABASE_DATABASE_URL ?? process.env.DATABASE_URL)

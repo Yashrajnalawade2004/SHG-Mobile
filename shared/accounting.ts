@@ -1,23 +1,11 @@
 /**
  * Resolves the true SHG and Bank repayment amounts from a repayment record,
  * ensuring safe backward compatibility with older database rows.
- * 
- * Older repayments only had the 'amount' field. Drizzle sets shgAmount and bankAmount to 0 by default.
- * If shgAmount and bankAmount are both exactly 0, it means it's an old record.
- * 
- * @param repayment - A loan repayment object from the database
- * @returns { shgAmount: number, bankAmount: number } 
  */
 export function resolveRepaymentAmounts(repayment: any): { shgAmount: number; bankAmount: number } {
-  // If both are strictly 0 (or falsy) but amount exists, it's a legacy repayment
   if (!repayment.shgAmount && !repayment.bankAmount && repayment.amount) {
-    return {
-      shgAmount: repayment.amount,
-      bankAmount: 0
-    };
+    return { shgAmount: repayment.amount, bankAmount: 0 };
   }
-
-  // Otherwise, use the explicit split amounts
   return {
     shgAmount: repayment.shgAmount || 0,
     bankAmount: repayment.bankAmount || 0
@@ -25,7 +13,7 @@ export function resolveRepaymentAmounts(repayment: any): { shgAmount: number; ba
 }
 
 /**
- * Calculates the total expected SHG principal + interest for a loan
+ * [LEGACY] Calculates the total expected SHG principal + interest for a flat-interest loan
  */
 export function calculateShgTotal(loan: any): number {
   const principal = loan.amount || 0;
@@ -35,7 +23,7 @@ export function calculateShgTotal(loan: any): number {
 }
 
 /**
- * Calculates the total expected Bank principal + interest for a loan
+ * [LEGACY] Calculates the total expected Bank principal + interest for a flat-interest loan
  */
 export function calculateBankTotal(loan: any): number {
   if (!loan.hasBankLoan) return 0;
@@ -46,7 +34,7 @@ export function calculateBankTotal(loan: any): number {
 }
 
 /**
- * Calculates the Equated Monthly Installment (EMI) for the SHG portion of a loan
+ * [LEGACY] Calculates the Equated Monthly Installment (EMI) for the SHG portion
  */
 export function calculateShgEmi(loan: any): number {
   if (!loan.duration || loan.duration <= 0) return 0;
@@ -54,9 +42,108 @@ export function calculateShgEmi(loan: any): number {
 }
 
 /**
- * Calculates the Equated Monthly Installment (EMI) for the Bank portion of a loan
+ * [LEGACY] Calculates the Equated Monthly Installment (EMI) for the Bank portion
  */
 export function calculateBankEmi(loan: any): number {
   if (!loan.hasBankLoan || !loan.bankDuration || loan.bankDuration <= 0) return 0;
   return Math.round(calculateBankTotal(loan) / loan.bankDuration);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// NEW REDUCING BALANCE ACCOUNTING ENGINE
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface LedgerEntryCalculation {
+  openingPrincipal: number;
+  interestRateApplied: number;
+  interestCharged: number;
+  interestPaid: number;
+  principalPaid: number;
+  paymentReceived: number;
+  closingPrincipal: number;
+  outstandingInterest: number;
+  // UI Helpers (not stored in ledger directly, but useful for preview)
+  suggestedPrincipal: number;
+  suggestedInstallment: number;
+  totalInterestDue: number;
+}
+
+/**
+ * Calculates the next ledger entry for a reducing balance loan given a payment amount.
+ * 
+ * Rules:
+ * 1. Current Interest = Outstanding Principal × Monthly Rate
+ * 2. Payment pays off Interest first, then Principal
+ * 3. Suggested Principal = Outstanding ÷ Remaining Months
+ * 4. Suggested Installment = Suggested Principal + Current Interest
+ * 
+ * @param loanSnapshot - The current state of the loan (remainingBalance, outstandingInterest)
+ * @param paymentAmount - The actual amount the user is paying this month (can be 0)
+ * @param monthlyRate - Monthly interest rate percentage (e.g. 2 for 2%)
+ * @param remainingMonths - Number of months remaining in the duration
+ * @param unpaidInterestPolicy - 'due' (default) or 'capitalize'
+ */
+export function calculateNextLedgerEntry(
+  loanSnapshot: { remainingBalance: number; outstandingInterest: number },
+  paymentAmount: number,
+  monthlyRate: number,
+  remainingMonths: number,
+  unpaidInterestPolicy: 'due' | 'capitalize' = 'due'
+): LedgerEntryCalculation {
+  const openingPrincipal = loanSnapshot.remainingBalance;
+  const previousOutstandingInterest = loanSnapshot.outstandingInterest;
+  
+  // 1. Current Interest = Outstanding Principal × Monthly Interest Rate
+  const interestCharged = Math.round(openingPrincipal * (monthlyRate / 100));
+  
+  // Total interest due this month is the newly charged interest + any unpaid interest from before
+  const totalInterestDue = interestCharged + previousOutstandingInterest;
+
+  // 2. Payment Allocation: Interest before Principal
+  let interestPaid = 0;
+  let principalPaid = 0;
+
+  if (paymentAmount >= totalInterestDue) {
+    interestPaid = totalInterestDue;
+    principalPaid = paymentAmount - totalInterestDue;
+  } else {
+    interestPaid = paymentAmount;
+    principalPaid = 0;
+  }
+
+  // Prevent paying more principal than is owed (overpayment just counts as zeroing out principal)
+  if (principalPaid > openingPrincipal) {
+    principalPaid = openingPrincipal;
+  }
+
+  // 3. Calculate remaining balances
+  let closingPrincipal = openingPrincipal - principalPaid;
+  let newOutstandingInterest = totalInterestDue - interestPaid;
+
+  // Apply capitalization policy if unpaid interest exists
+  if (newOutstandingInterest > 0 && unpaidInterestPolicy === 'capitalize') {
+    closingPrincipal += newOutstandingInterest;
+    newOutstandingInterest = 0;
+  }
+
+  // 4. Calculate Suggested Installments for the UI (using current month's opening principal)
+  // Suggested Principal = Outstanding ÷ Remaining Months
+  const safeRemainingMonths = remainingMonths > 0 ? remainingMonths : 1;
+  const suggestedPrincipal = Math.round(openingPrincipal / safeRemainingMonths);
+  const suggestedInstallment = suggestedPrincipal + interestCharged + previousOutstandingInterest;
+
+  return {
+    openingPrincipal,
+    interestRateApplied: monthlyRate,
+    interestCharged,
+    interestPaid,
+    principalPaid,
+    paymentReceived: paymentAmount,
+    closingPrincipal,
+    outstandingInterest: newOutstandingInterest,
+    
+    suggestedPrincipal,
+    suggestedInstallment,
+    totalInterestDue
+  };
 }
