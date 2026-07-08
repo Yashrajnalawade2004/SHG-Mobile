@@ -30,7 +30,7 @@ export default function DashboardScreen() {
   const insets = useSafeAreaInsets();
   const { user, group, isPresident, isTreasurer } = useAuth();
   const { t, language } = useLanguage();
-  const { meetings, payments, loans, loanRepayments, groupMembers, refreshData, groupSummary, groupSettings } = useData();
+  const { meetings, payments, loans, loanRepayments, groupMembers, refreshData, groupSummary, groupSettings, groupBankLoans, bankLoanAllocations } = useData();
   const [refreshing, setRefreshing] = useState(false);
 
   const [dismissedSavings, setDismissedSavings] = useState(false);
@@ -410,6 +410,51 @@ export default function DashboardScreen() {
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
     .slice(0, 8);
 
+  // ─── Bank Loan Dashboard Data ──────────────────────────────────────────────
+  const bankLoanDashData = useMemo(() => {
+    const isAdmin = user?.role === "president" || user?.role === "treasurer";
+    if (isAdmin) {
+      const activeLoans = groupBankLoans.filter(l => l.status === "active");
+      const totalOutstanding = bankLoanAllocations.reduce((s, a) => s + a.outstandingBalance, 0);
+      const totalOutstandingInterest = bankLoanAllocations.reduce((s, a) => s + a.outstandingInterest, 0);
+      const totalPrincipalCollected = bankLoanAllocations.reduce((s, a) => s + a.totalPrincipalPaid, 0);
+      const totalInterestCollected = bankLoanAllocations.reduce((s, a) => s + a.totalInterestPaid, 0);
+      const membersAllocated = bankLoanAllocations.length;
+      const membersCompleted = bankLoanAllocations.filter(a => a.status === "completed").length;
+      return {
+        isAdmin: true,
+        activeLoansCount: activeLoans.length,
+        totalOutstanding,
+        totalOutstandingInterest,
+        totalPrincipalCollected,
+        totalInterestCollected,
+        membersAllocated,
+        membersCompleted,
+      };
+    } else {
+      // Member: find their own active allocations
+      const myAllocs = bankLoanAllocations.filter(a => a.memberId === user?.id && a.status === "active");
+      if (myAllocs.length === 0) return null;
+      const primary = myAllocs[0];
+      const loan = groupBankLoans.find(l => l.id === primary.bankLoanId);
+      if (!loan) return null;
+      // Simple recommendation
+      const r = loan.annualInterestRate / 100 / 12;
+      const interestThisMonth = Math.round(primary.outstandingBalance * r);
+      const n = loan.durationMonths;
+      const P = loan.amount;
+      const emi = r > 0 ? Math.round((P * r * Math.pow(1 + r, n)) / (Math.pow(1 + r, n) - 1)) : Math.round(P / n);
+      const principalPortion = Math.max(0, emi - interestThisMonth);
+      const recommendedPayment = principalPortion + interestThisMonth + primary.outstandingInterest;
+      return {
+        isAdmin: false,
+        allocation: primary,
+        loan,
+        recommendedPayment,
+      };
+    }
+  }, [user?.role, user?.id, groupBankLoans, bankLoanAllocations]);
+
   const micColors: Record<MicState, string> = {
     idle: Colors.light.primary,
     listening: "#E53935",
@@ -787,6 +832,83 @@ export default function DashboardScreen() {
           </View>
         )}
 
+
+        {/* ────── GROUP BANK LOAN SECTION ────── */}
+        {bankLoanDashData && (
+          <View style={styles.section}>
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                <Ionicons name="business-outline" size={18} color="#2980B9" />
+                <Text style={[styles.sectionTitle, { color: "#1B4F72" }]}>{t("bank_loan.dashboard_title")}</Text>
+              </View>
+              <Pressable onPress={() => router.push("/bank-loans" as any)}>
+                <Text style={[styles.viewAllText, { color: "#2980B9" }]}>{t("bank_loan.view_details")}</Text>
+              </Pressable>
+            </View>
+
+            {bankLoanDashData.isAdmin ? (
+              <View style={{ backgroundColor: "#EBF5FB", borderRadius: 14, padding: 14, borderWidth: 1, borderColor: "#2980B9" + "40" }}>
+                <Text style={{ fontSize: 12, color: "#2980B9", fontFamily: "Poppins_400Regular", marginBottom: 10 }}>{t("bank_loan.dashboard_subtitle_admin")}</Text>
+                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+                  <View style={{ flex: 1, minWidth: "44%", backgroundColor: "#fff", borderRadius: 10, padding: 10 }}>
+                    <Text style={{ fontSize: 11, color: "#666", fontFamily: "Poppins_400Regular" }}>{t("bank_loan.active_loans")}</Text>
+                    <Text style={{ fontSize: 16, fontFamily: "Poppins_700Bold", color: "#1B4F72" }}>{bankLoanDashData.activeLoansCount}</Text>
+                  </View>
+                  <View style={{ flex: 1, minWidth: "44%", backgroundColor: "#fff", borderRadius: 10, padding: 10 }}>
+                    <Text style={{ fontSize: 11, color: "#666", fontFamily: "Poppins_400Regular" }}>{t("bank_loan.outstanding")}</Text>
+                    <Text style={{ fontSize: 16, fontFamily: "Poppins_700Bold", color: "#C0392B" }}>Rs. {(bankLoanDashData.totalOutstanding || 0).toLocaleString("en-IN")}</Text>
+                  </View>
+                  <View style={{ flex: 1, minWidth: "44%", backgroundColor: "#fff", borderRadius: 10, padding: 10 }}>
+                    <Text style={{ fontSize: 11, color: "#666", fontFamily: "Poppins_400Regular" }}>{t("bank_loan.principal_collected")}</Text>
+                    <Text style={{ fontSize: 16, fontFamily: "Poppins_700Bold", color: "#1B6B4A" }}>Rs. {(bankLoanDashData.totalPrincipalCollected || 0).toLocaleString("en-IN")}</Text>
+                  </View>
+                  <View style={{ flex: 1, minWidth: "44%", backgroundColor: "#fff", borderRadius: 10, padding: 10 }}>
+                    <Text style={{ fontSize: 11, color: "#666", fontFamily: "Poppins_400Regular" }}>{t("bank_loan.interest_collected")}</Text>
+                    <Text style={{ fontSize: 16, fontFamily: "Poppins_700Bold", color: "#1B6B4A" }}>Rs. {(bankLoanDashData.totalInterestCollected || 0).toLocaleString("en-IN")}</Text>
+                  </View>
+                  <View style={{ flex: 1, minWidth: "44%", backgroundColor: "#fff", borderRadius: 10, padding: 10 }}>
+                    <Text style={{ fontSize: 11, color: "#666", fontFamily: "Poppins_400Regular" }}>{t("bank_loan.members_allocated")}</Text>
+                    <Text style={{ fontSize: 16, fontFamily: "Poppins_700Bold", color: "#1B4F72" }}>{bankLoanDashData.membersAllocated}</Text>
+                  </View>
+                  <View style={{ flex: 1, minWidth: "44%", backgroundColor: "#fff", borderRadius: 10, padding: 10 }}>
+                    <Text style={{ fontSize: 11, color: "#666", fontFamily: "Poppins_400Regular" }}>{t("bank_loan.members_completed")}</Text>
+                    <Text style={{ fontSize: 16, fontFamily: "Poppins_700Bold", color: "#1B6B4A" }}>{bankLoanDashData.membersCompleted}</Text>
+                  </View>
+                </View>
+              </View>
+            ) : (
+              <Pressable
+                style={{ backgroundColor: "#EBF5FB", borderRadius: 14, padding: 14, borderWidth: 1, borderColor: "#2980B9" + "40" }}
+                onPress={() => router.push({ pathname: "/bank-loan/allocation/[id]" as any, params: { id: bankLoanDashData.allocation?.id } })}
+              >
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 10 }}>
+                  <Ionicons name="business-outline" size={18} color="#2980B9" />
+                  <Text style={{ fontSize: 14, fontFamily: "Poppins_600SemiBold", color: "#1B4F72" }}>{bankLoanDashData.loan?.bankName}</Text>
+                </View>
+                <View style={{ flexDirection: "row", gap: 12, flexWrap: "wrap" }}>
+                  <View style={{ flex: 1, minWidth: "44%" }}>
+                    <Text style={{ fontSize: 11, color: "#666", fontFamily: "Poppins_400Regular" }}>{t("bank_loan.allocated_principal")}</Text>
+                    <Text style={{ fontSize: 14, fontFamily: "Poppins_600SemiBold", color: "#1B4F72" }}>Rs. {(bankLoanDashData.allocation?.allocatedPrincipal || 0).toLocaleString("en-IN")}</Text>
+                  </View>
+                  <View style={{ flex: 1, minWidth: "44%" }}>
+                    <Text style={{ fontSize: 11, color: "#666", fontFamily: "Poppins_400Regular" }}>{t("bank_loan.outstanding")}</Text>
+                    <Text style={{ fontSize: 14, fontFamily: "Poppins_600SemiBold", color: "#C0392B" }}>Rs. {(bankLoanDashData.allocation?.outstandingBalance || 0).toLocaleString("en-IN")}</Text>
+                  </View>
+                  <View style={{ flex: 1, minWidth: "44%" }}>
+                    <Text style={{ fontSize: 11, color: "#666", fontFamily: "Poppins_400Regular" }}>{t("bank_loan.recommended_payment")}</Text>
+                    <Text style={{ fontSize: 14, fontFamily: "Poppins_600SemiBold", color: "#2980B9" }}>Rs. {(bankLoanDashData.recommendedPayment || 0).toLocaleString("en-IN")}</Text>
+                  </View>
+                </View>
+                <View style={{ flexDirection: "row", alignItems: "center", marginTop: 10 }}>
+                  <Ionicons name="book-outline" size={13} color="#2980B9" />
+                  <Text style={{ fontSize: 12, color: "#2980B9", marginLeft: 4, fontFamily: "Poppins_500Medium" }}>{t("bank_loan.view_passbook")}</Text>
+                  <View style={{ flex: 1 }} />
+                  <Ionicons name="chevron-forward" size={14} color="#2980B9" />
+                </View>
+              </Pressable>
+            )}
+          </View>
+        )}
 
         {upcomingMeetings.length > 0 && (
           <View style={styles.section}>

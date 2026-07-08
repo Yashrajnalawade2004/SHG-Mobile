@@ -149,6 +149,65 @@ export interface AffiliatedBank {
   createdAt: string;
 }
 
+export interface GroupBankLoan {
+  id: string;
+  groupId: string;
+  bankName: string;
+  branch?: string;
+  accountNumber?: string;
+  ifscCode?: string;
+  sanctionDate: string;
+  repaymentStartDate?: string;
+  amount: number;
+  annualInterestRate: number;
+  durationMonths: number;
+  remarks?: string;
+  status: string;
+  createdBy: string;
+  createdAt: string;
+}
+
+export interface BankLoanAllocation {
+  id: string;
+  bankLoanId: string;
+  memberId: string;
+  allocatedPrincipal: number;
+  totalPrincipalPaid: number;
+  totalInterestPaid: number;
+  outstandingBalance: number;
+  outstandingInterest: number;
+  status: string;
+}
+
+export interface BankLoanRepayment {
+  id: string;
+  allocationId: string;
+  receiptNo: string;
+  amount: number;
+  date: string;
+  recordedBy: string;
+  remarks?: string;
+}
+
+export interface BankLoanLedgerEntry {
+  id: string;
+  allocationId: string;
+  receiptNo: string;
+  type: string;
+  date: string;
+  openingPrincipal: number;
+  interestRateApplied: number;
+  interestCharged: number;
+  interestPaid: number;
+  principalPaid: number;
+  paymentReceived: number;
+  closingPrincipal: number;
+  outstandingInterest: number;
+  remarks?: string;
+  recordedBy: string;
+  createdAt: string;
+}
+
 export interface DurationRule {
   maxAmount: number;
   minDuration: number;
@@ -258,6 +317,31 @@ export interface IStorage {
   getInvitationCodesByGroup(groupId: string): Promise<schema.InvitationCode[]>;
   createInvitationCode(data: Omit<schema.InvitationCode, "id" | "createdAt" | "currentUses">): Promise<schema.InvitationCode>;
   incrementInvitationCodeUsage(codeId: string, userId: string): Promise<void>;
+
+  // Group Bank Loan Module
+  getGroupBankLoansByGroupId(groupId: string): Promise<GroupBankLoan[]>;
+  getGroupBankLoanById(id: string): Promise<GroupBankLoan | undefined>;
+  createGroupBankLoan(loan: Omit<GroupBankLoan, "id" | "createdAt">): Promise<GroupBankLoan>;
+  updateGroupBankLoan(id: string, data: Partial<GroupBankLoan>): Promise<GroupBankLoan | undefined>;
+  deleteGroupBankLoan(id: string): Promise<void>;
+  getBankLoanAllocationsByLoanId(bankLoanId: string): Promise<BankLoanAllocation[]>;
+  getBankLoanAllocationById(id: string): Promise<BankLoanAllocation | undefined>;
+  getBankLoanAllocationsByGroupId(groupId: string): Promise<BankLoanAllocation[]>;
+  getBankLoanAllocationsByMemberId(memberId: string): Promise<BankLoanAllocation[]>;
+  updateBankLoanAllocation(id: string, data: Partial<BankLoanAllocation>): Promise<BankLoanAllocation | undefined>;
+  allocateBankLoanFunds(
+    allocations: Omit<BankLoanAllocation, "id" | "totalPrincipalPaid" | "totalInterestPaid" | "outstandingInterest" | "status">[],
+    ledgers: Omit<BankLoanLedgerEntry, "id" | "createdAt">[]
+  ): Promise<void>;
+  getBankLoanLedger(allocationId: string): Promise<BankLoanLedgerEntry[]>;
+  getGroupBankLoanLedgerByGroupId(groupId: string): Promise<BankLoanLedgerEntry[]>;
+  getBankLoanRepaymentsByAllocationId(allocationId: string): Promise<BankLoanRepayment[]>;
+  getNextBankLoanReceiptSequence(year: number): Promise<number>;
+  recordBankLoanRepayment(
+    repayment: Omit<BankLoanRepayment, "id" | "date">,
+    ledgerEntry: Omit<BankLoanLedgerEntry, "id" | "createdAt">,
+    snapshotUpdate: { outstandingBalance: number; outstandingInterest: number; totalPrincipalPaid: number; totalInterestPaid: number; status?: string }
+  ): Promise<BankLoanRepayment>;
 }
 
 export class MemStorage implements IStorage {
@@ -915,6 +999,16 @@ export class DatabaseStorage implements IStorage {
     await this.db.update(schema.groupBankLoans).set(data).where(eq(schema.groupBankLoans.id, id));
     return this.getGroupBankLoanById(id);
   }
+
+  async deleteGroupBankLoan(id: string): Promise<void> {
+    const allocations = await this.getBankLoanAllocationsByLoanId(id);
+    for (const alloc of allocations) {
+      await this.db.delete(schema.bankLoanRepayments).where(eq(schema.bankLoanRepayments.allocationId, alloc.id));
+      await this.db.delete(schema.bankLoanLedger).where(eq(schema.bankLoanLedger.allocationId, alloc.id));
+    }
+    await this.db.delete(schema.bankLoanAllocations).where(eq(schema.bankLoanAllocations.bankLoanId, id));
+    await this.db.delete(schema.groupBankLoans).where(eq(schema.groupBankLoans.id, id));
+  }
   
   async getBankLoanAllocationsByLoanId(bankLoanId: string): Promise<BankLoanAllocation[]> {
     return await this.db.select().from(schema.bankLoanAllocations).where(eq(schema.bankLoanAllocations.bankLoanId, bankLoanId));
@@ -981,7 +1075,7 @@ export class DatabaseStorage implements IStorage {
   async recordBankLoanRepayment(
     repayment: Omit<BankLoanRepayment, "id" | "date">,
     ledgerEntry: Omit<BankLoanLedgerEntry, "id" | "createdAt">,
-    snapshotUpdate: { outstandingBalance: number; outstandingInterest: number; totalPrincipalPaid: number; totalInterestPaid: number }
+    snapshotUpdate: { outstandingBalance: number; outstandingInterest: number; totalPrincipalPaid: number; totalInterestPaid: number; status?: string }
   ): Promise<BankLoanRepayment> {
     let repId = "";
     await this.db.transaction(async (tx) => {
@@ -1002,6 +1096,37 @@ export class DatabaseStorage implements IStorage {
     const rows = await this.db.select().from(schema.bankLoanRepayments).where(eq(schema.bankLoanRepayments.id, repId));
     return rows[0];
   }
+
+  async getBankLoanAllocationsByMemberId(memberId: string): Promise<BankLoanAllocation[]> {
+    return await this.db.select().from(schema.bankLoanAllocations).where(eq(schema.bankLoanAllocations.memberId, memberId));
+  }
+
+  async updateBankLoanAllocation(id: string, data: Partial<BankLoanAllocation>): Promise<BankLoanAllocation | undefined> {
+// @ts-expect-error
+    await this.db.update(schema.bankLoanAllocations).set(data).where(eq(schema.bankLoanAllocations.id, id));
+    return this.getBankLoanAllocationById(id);
+  }
+
+  async getBankLoanRepaymentsByAllocationId(allocationId: string): Promise<BankLoanRepayment[]> {
+    return await this.db.select().from(schema.bankLoanRepayments).where(eq(schema.bankLoanRepayments.allocationId, allocationId));
+  }
+
+  async getNextBankLoanReceiptSequence(year: number): Promise<number> {
+    const jobName = `bank_loan_receipt_seq_${year}`;
+    // Use cronLocks table as a simple sequence: store the current count in lockedAt
+    const rows = await this.db.select().from(schema.cronLocks).where(eq(schema.cronLocks.jobName, jobName));
+    if (rows.length === 0) {
+      await this.db.insert(schema.cronLocks).values({ jobName, lockedAt: new Date() });
+      return 1;
+    }
+    // Use a counter stored as an extra field — we'll encode it in the timestamp milliseconds
+    // Actually just use count of bank loan repayments for the year as the sequence
+    const allReps = await this.db.select().from(schema.bankLoanRepayments);
+    const yearStr = String(year);
+    const count = allReps.filter(r => r.receiptNo.includes(`BLR-${yearStr}-`)).length;
+    return count + 1;
+  }
+
 }
 
 export const storage: IStorage = (process.env.SUPABASE_DATABASE_URL ?? process.env.DATABASE_URL)

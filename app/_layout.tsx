@@ -38,6 +38,10 @@ function RootLayoutNav() {
       <Stack.Screen name="history" options={{ headerShown: false }} />
       <Stack.Screen name="shg-settings" options={{ headerShown: false }} />
       <Stack.Screen name="reports" options={{ headerShown: false }} />
+      <Stack.Screen name="bank-loans" options={{ headerShown: false }} />
+      <Stack.Screen name="create-bank-loan" options={{ headerShown: false, presentation: "modal" }} />
+      <Stack.Screen name="bank-loan/[id]" options={{ headerShown: false }} />
+      <Stack.Screen name="bank-loan/allocation/[id]" options={{ headerShown: false }} />
     </Stack>
   );
 }

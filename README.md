@@ -29,9 +29,9 @@ A unique feature of this platform is the **AI Voice Assistant**, designed specif
 - **Dashboard Reminders**: Multi-state dynamic reminders (Pending, Submitted, Rejected) for monthly contributions prominently displayed on the member dashboard.
 - **Automatic Monthly Payment Generation**: Monthly dues are created systematically.
 - **Late Fee Automation**: Programmable late fee structures (fixed or percentage) applied automatically on overdue payments.
-- **Advanced Loan Workflow**: Members request standard loans. The President and Treasurer can convert these requests into Bank Assisted Loans during the approval phase by filling in bank details. The President retains ultimate override authority for final loan approvals.
-- **Bank Assisted Loans Integration**: Advanced loan structure allowing SHGs to augment internal funds with affiliated bank loans. Tracks separate Principal, Interest, Duration, and EMI for the "SHG Portion" and "Bank Portion".
-- **Accurate Repayment Tracking & Pass-throughs**: Distinctly tracks "SHG Income" versus "Bank Collections (Pass-through)" to ensure accurate ledger balancing. Dynamic cascading updates ensure that editing or deleting a repayment instantly recalculates outstanding balances across the entire dashboard.
+- **Internal Group Loans**: Members can request loans from internal SHG savings. Includes a robust multi-step approval workflow (Treasurer verification -> President final approval). Supports both Flat Rate and Reducing Balance calculation methods. Features an integrated passbook to track dynamic amortization, separate principal and interest payments, and exact outstanding balances.
+- **External Bank Loans**: A completely independent, advanced subsystem for managing large external loans taken by the SHG from a bank. The President creates the bank loan and allocates the principal to members using Equal or Custom Distribution. Each member receives a dedicated Bank Loan Passbook that uses exact reverse-amortization financial math to track EMIs, remaining tenure, and real-time interest/principal splits.
+- **Accurate Repayment Tracking**: Both loan modules dynamically track and recalculate outstanding balances in real-time. Payments automatically split into Interest and Principal portions, and editing or deleting a repayment instantly recalculates all subsequent ledgers and remaining months.
 - **Financial Summary Dashboard**: Real-time calculation of Current Balance (Savings + Late Fees + Repayments - Loans).
 - **Comprehensive Reports**: Member Register, Savings Reports, Loan Reports, and Financial Summaries with dedicated splits for Active vs Completed loans.
 - **PDF Generation**: Fully localized (Marathi & English) PDF statements exportable directly to the device with zero hardcoded English bleeds.
@@ -99,11 +99,15 @@ app/
   (auth)/                 Login and Register flows
   (main)/                 Primary tabs (Dashboard, Meetings, Payments, More)
   (super-admin)/          Super Admin Web Dashboard
-  create-loan.tsx         Loan request logic
+  create-loan.tsx         Internal loan request logic
   create-meeting.tsx      Meeting scheduling
+  create-bank-loan.tsx    External Bank Loan creation
   history.tsx             Presidential history logs
-  loan/[id].tsx           Loan detail & repayment tracking
+  loan/[id].tsx           Internal loan detail & repayment tracking
   loan-settings.tsx       Group loan configuration
+  bank-loans.tsx          Directory of all active & closed bank loans
+  bank-loan/[id].tsx      Bank loan details & allocation to members
+  bank-loan/allocation/[id].tsx Member's individual bank loan passbook
   member/[id].tsx         Detailed member profile & history
   members.tsx             Member directory
   reports.tsx             Configurable reporting UI
@@ -132,7 +136,8 @@ server/
   cron.ts                 Automated late fee & contribution generation
 shared/
   schema.ts               Drizzle schema (Single Source of Truth)
-  accounting.ts           Shared accounting & logic utilities
+  accounting.ts           Shared accounting & internal loan logic
+  bankLoanAccounting.ts   Financial math & amortization for Bank Loans
 ```
 
 ---
