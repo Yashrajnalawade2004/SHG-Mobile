@@ -47,7 +47,7 @@ export default function MemberDetailScreen() {
     );
   }
 
-  const canDownload = isPresident || user?.id === member.id;
+  const canDownload = isPresident || user?.role === "treasurer" || user?.id === member.id;
 
   const memberPayments = payments.filter((p) => p.memberId === member.id);
   const confirmedPayments = memberPayments.filter((p) => p.status === "confirmed");

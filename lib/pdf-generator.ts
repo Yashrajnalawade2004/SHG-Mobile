@@ -768,3 +768,325 @@ export async function generateLoanPassbookReport(
   
   return printOrShareHtml(html, `Loan_Passbook_${member?.name?.replace(/\s+/g, "_") || 'Unknown'}.pdf`, t);
 }
+
+// ─── BANK LOAN PDF FUNCTIONS ──────────────────────────────────────────────────
+// These functions are completely independent of the Internal SHG Loan PDFs.
+// They read from the immutable bank_loan_ledger and allocation snapshots.
+
+/**
+ * Generate a professional banking-style passbook PDF for a member's bank loan allocation.
+ */
+export async function generateBankLoanPassbookPDF({
+  allocation,
+  bankLoan,
+  member,
+  ledger,
+  group,
+  t,
+  language,
+}: {
+  allocation: any;
+  bankLoan: any;
+  member: any;
+  ledger: any[];
+  group: any;
+  t: (key: string) => string;
+  language: string;
+}) {
+  const RUPEE = "\u20B9";
+  const today = formatDateTime(new Date());
+  const sortedLedger = [...ledger].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+  const totalInterestCharged = sortedLedger.filter(e => e.type !== "disbursement").reduce((s, e) => s + (e.interestCharged || 0), 0);
+
+  let html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Bank Loan Passbook</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: Arial, sans-serif; color: #1a1a1a; background: #fff; font-size: 12px; }
+    .page { padding: 24px; max-width: 900px; margin: 0 auto; }
+    .bank-header { background: linear-gradient(135deg, #1B4F72 0%, #2980B9 100%); color: white; padding: 20px 24px; border-radius: 8px 8px 0 0; margin-bottom: 0; }
+    .bank-header h1 { font-size: 22px; font-weight: bold; margin-bottom: 4px; }
+    .bank-header h2 { font-size: 15px; font-weight: normal; opacity: 0.85; }
+    .account-section { background: #F0F8FF; border: 2px solid #2980B9; border-top: none; border-radius: 0 0 8px 8px; padding: 16px 24px; margin-bottom: 20px; }
+    .account-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .account-field label { font-size: 10px; color: #666; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px; }
+    .account-field span { display: block; font-size: 14px; font-weight: bold; color: #1B4F72; }
+    .summary-table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+    .summary-table th { background: #1B4F72; color: white; padding: 10px; text-align: left; font-size: 11px; }
+    .summary-table td { padding: 10px; border-bottom: 1px solid #E0E0E0; }
+    .summary-table tr:nth-child(even) td { background: #F5F5F5; }
+    .ledger-table { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 11px; }
+    .ledger-table th { background: #1B4F72; color: white; padding: 8px 6px; text-align: right; font-weight: bold; }
+    .ledger-table th:first-child { text-align: left; }
+    .ledger-table td { padding: 7px 6px; border-bottom: 1px solid #E8E8E8; text-align: right; }
+    .ledger-table td:first-child, .ledger-table td:nth-child(2), .ledger-table td:nth-child(3) { text-align: left; }
+    .ledger-table tr:nth-child(even) td { background: #FAFAFA; }
+    .ledger-table .disbursement td { background: #E8F5E9 !important; font-weight: bold; color: #1B6B4A; }
+    .ledger-table .footer-row td { background: #EBF5FB; font-weight: bold; border-top: 2px solid #1B4F72; }
+    .danger { color: #C0392B; }
+    .success { color: #1B6B4A; }
+    .generated { font-size: 10px; color: #999; text-align: right; margin-top: 16px; }
+    h3 { font-size: 14px; color: #1B4F72; margin-bottom: 10px; border-bottom: 2px solid #1B4F72; padding-bottom: 4px; }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <!-- Bank Header -->
+  <div class="bank-header">
+    <h1>${bankLoan.bankName}</h1>
+    <h2>${bankLoan.branch || ""} ${bankLoan.accountNumber ? "| A/C: " + bankLoan.accountNumber : ""} ${bankLoan.ifscCode ? "| IFSC: " + bankLoan.ifscCode : ""}</h2>
+  </div>
+
+  <!-- Account Details -->
+  <div class="account-section">
+    <div class="account-grid">
+      <div class="account-field">
+        <label>${t("bank_loan.account_holder")}</label>
+        <span>${member.name}</span>
+      </div>
+      <div class="account-field">
+        <label>${t("bank_loan.allocated_principal")}</label>
+        <span>${RUPEE} ${allocation.allocatedPrincipal.toLocaleString("en-IN")}</span>
+      </div>
+      <div class="account-field">
+        <label>${t("annualInterestRate")}</label>
+        <span>${bankLoan.annualInterestRate}% p.a. (${(bankLoan.annualInterestRate / 12).toFixed(2)}% monthly)</span>
+      </div>
+      <div class="account-field">
+        <label>${t("durationMonths")}</label>
+        <span>${bankLoan.durationMonths} months</span>
+      </div>
+      <div class="account-field">
+        <label>${t("sanctionDate")}</label>
+        <span>${formatDate(bankLoan.sanctionDate)}</span>
+      </div>
+      <div class="account-field">
+        <label>SHG / Group</label>
+        <span>${group?.name || ""}</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Account Summary -->
+  <h3>${t("bank_loan.account_summary")}</h3>
+  <table class="summary-table">
+    <thead><tr><th>${t("bank_loan.detail")}</th><th>${t("bank_loan.amount")}</th></tr></thead>
+    <tbody>
+      <tr><td>${t("bank_loan.allocated_principal")}</td><td>${RUPEE} ${allocation.allocatedPrincipal.toLocaleString("en-IN")}</td></tr>
+      <tr><td>${t("bank_loan.principal_paid")}</td><td class="success">${RUPEE} ${allocation.totalPrincipalPaid.toLocaleString("en-IN")}</td></tr>
+      <tr><td>${t("bank_loan.interest_paid")}</td><td class="success">${RUPEE} ${allocation.totalInterestPaid.toLocaleString("en-IN")}</td></tr>
+      <tr><td>${t("bank_loan.outstanding_principal")}</td><td class="${allocation.outstandingBalance > 0 ? 'danger' : 'success'}">${RUPEE} ${allocation.outstandingBalance.toLocaleString("en-IN")}</td></tr>
+      <tr><td>${t("bank_loan.outstanding_interest")}</td><td class="${allocation.outstandingInterest > 0 ? 'danger' : 'success'}">${RUPEE} ${allocation.outstandingInterest.toLocaleString("en-IN")}</td></tr>
+      <tr><td><strong>${t("bank_loan.total_outstanding")}</strong></td><td class="danger"><strong>${RUPEE} ${(allocation.outstandingBalance + allocation.outstandingInterest).toLocaleString("en-IN")}</strong></td></tr>
+    </tbody>
+  </table>
+
+  <!-- Passbook Ledger -->
+  <h3>${t("bank_loan.passbook")}</h3>
+  <table class="ledger-table">
+    <thead>
+      <tr>
+        <th style="text-align:left">${t("bank_loan.date")}</th>
+        <th style="text-align:left">${t("bank_loan.receipt_no")}</th>
+        <th style="text-align:left">${t("bank_loan.particulars")}</th>
+        <th>${t("bank_loan.opening_principal")}</th>
+        <th>${t("bank_loan.interest_charged")}</th>
+        <th>${t("bank_loan.principal_paid")}</th>
+        <th>${t("bank_loan.total_payment")}</th>
+        <th>${t("bank_loan.closing_principal")}</th>
+        <th>${t("bank_loan.outstanding_interest")}</th>
+      </tr>
+    </thead>
+    <tbody>`;
+
+  sortedLedger.forEach(entry => {
+    const isDisbursement = entry.type === "disbursement";
+    html += `
+      <tr class="${isDisbursement ? 'disbursement' : ''}">
+        <td>${formatDate(entry.date)}</td>
+        <td>${entry.receiptNo || "—"}</td>
+        <td>${isDisbursement ? t("bank_loan.disbursement") : t("bank_loan.repayment")}</td>
+        <td>${(entry.openingPrincipal || 0).toLocaleString("en-IN")}</td>
+        <td>${(entry.interestCharged || 0).toLocaleString("en-IN")}</td>
+        <td>${(entry.principalPaid || 0).toLocaleString("en-IN")}</td>
+        <td><strong>${(entry.paymentReceived || 0).toLocaleString("en-IN")}</strong></td>
+        <td style="color:${(entry.closingPrincipal || 0) > 0 ? '#C0392B' : '#1B6B4A'}">${(entry.closingPrincipal || 0).toLocaleString("en-IN")}</td>
+        <td style="color:${(entry.outstandingInterest || 0) > 0 ? '#C0392B' : '#1B6B4A'}">${(entry.outstandingInterest || 0).toLocaleString("en-IN")}</td>
+      </tr>`;
+  });
+
+  html += `
+      <tr class="footer-row">
+        <td colspan="3"><strong>${t("bank_loan.total")}</strong></td>
+        <td>—</td>
+        <td>${totalInterestCharged.toLocaleString("en-IN")}</td>
+        <td>${allocation.totalPrincipalPaid.toLocaleString("en-IN")}</td>
+        <td><strong>${(allocation.totalPrincipalPaid + allocation.totalInterestPaid).toLocaleString("en-IN")}</strong></td>
+        <td class="danger">${allocation.outstandingBalance.toLocaleString("en-IN")}</td>
+        <td class="danger">${allocation.outstandingInterest.toLocaleString("en-IN")}</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="generated">${t("bank_loan.generated_on")}: ${today} | ${group?.name || ""}</div>
+</div>
+</body>
+</html>`;
+
+  return printOrShareHtml(
+    html,
+    `BankLoan_Passbook_${member?.name?.replace(/\s+/g, "_") || "Unknown"}.pdf`,
+    t
+  );
+}
+
+/**
+ * Generate a Group Bank Loan Statement PDF (President/Treasurer view).
+ * Shows sanctioned amount, all member allocations, recovery summary.
+ */
+export async function generateGroupBankLoanStatementPDF({
+  bankLoan,
+  allocations,
+  members,
+  group,
+  t,
+  language,
+}: {
+  bankLoan: any;
+  allocations: any[];
+  members: any[];
+  group: any;
+  t: (key: string) => string;
+  language: string;
+}) {
+  const RUPEE = "\u20B9";
+  const today = formatDateTime(new Date());
+
+  const totalAllocated = allocations.reduce((s, a) => s + a.allocatedPrincipal, 0);
+  const totalPrincipalCollected = allocations.reduce((s, a) => s + a.totalPrincipalPaid, 0);
+  const totalInterestCollected = allocations.reduce((s, a) => s + a.totalInterestPaid, 0);
+  const totalOutstandingPrincipal = allocations.reduce((s, a) => s + a.outstandingBalance, 0);
+  const totalOutstandingInterest = allocations.reduce((s, a) => s + a.outstandingInterest, 0);
+  const membersCompleted = allocations.filter(a => a.status === "completed").length;
+
+  let html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: Arial, sans-serif; color: #1a1a1a; font-size: 12px; }
+    .page { padding: 24px; }
+    .header { background: linear-gradient(135deg, #1B4F72 0%, #2980B9 100%); color: white; padding: 20px; border-radius: 8px; margin-bottom: 20px; }
+    .header h1 { font-size: 20px; margin-bottom: 4px; }
+    .header h2 { font-size: 13px; opacity: 0.85; }
+    h3 { font-size: 14px; color: #1B4F72; margin: 16px 0 8px; border-bottom: 2px solid #2980B9; padding-bottom: 4px; }
+    .info-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-bottom: 16px; }
+    .info-box { background: #F0F8FF; border: 1px solid #2980B9; border-radius: 8px; padding: 12px; }
+    .info-box label { font-size: 10px; color: #555; font-weight: bold; text-transform: uppercase; }
+    .info-box span { display: block; font-size: 16px; font-weight: bold; color: #1B4F72; margin-top: 4px; }
+    table { width: 100%; border-collapse: collapse; margin-bottom: 16px; font-size: 11px; }
+    th { background: #1B4F72; color: white; padding: 8px 6px; text-align: right; }
+    th:first-child, th:nth-child(2) { text-align: left; }
+    td { padding: 7px 6px; border-bottom: 1px solid #E0E0E0; text-align: right; }
+    td:first-child, td:nth-child(2) { text-align: left; }
+    tr:nth-child(even) td { background: #F5F5F5; }
+    .footer-row td { background: #EBF5FB !important; font-weight: bold; border-top: 2px solid #1B4F72; }
+    .danger { color: #C0392B; }
+    .success { color: #1B6B4A; }
+    .completed-badge { background: #1B6B4A; color: white; padding: 2px 6px; border-radius: 4px; font-size: 10px; }
+    .active-badge { background: #2980B9; color: white; padding: 2px 6px; border-radius: 4px; font-size: 10px; }
+    .progress-bar { background: #E0E0E0; border-radius: 4px; height: 8px; width: 100px; display: inline-block; }
+    .generated { font-size: 10px; color: #999; text-align: right; margin-top: 16px; }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <div class="header">
+    <h1>${t("bank_loan.group_statement")} — ${bankLoan.bankName}</h1>
+    <h2>${group?.name || ""} | ${t("bank_loan.sanction_date")}: ${formatDate(bankLoan.sanctionDate)} | ${t("bank_loan.account_no")}: ${bankLoan.accountNumber || "—"}</h2>
+  </div>
+
+  <!-- Master Summary -->
+  <h3>${t("bank_loan.master_summary")}</h3>
+  <div class="info-grid">
+    <div class="info-box"><label>${t("sanctionAmount")}</label><span>${RUPEE} ${bankLoan.amount.toLocaleString("en-IN")}</span></div>
+    <div class="info-box"><label>${t("bank_loan.total_allocated")}</label><span>${RUPEE} ${totalAllocated.toLocaleString("en-IN")}</span></div>
+    <div class="info-box"><label>${t("bank_loan.unallocated")}</label><span>${RUPEE} ${(bankLoan.amount - totalAllocated).toLocaleString("en-IN")}</span></div>
+    <div class="info-box"><label>${t("bank_loan.principal_collected")}</label><span class="success">${RUPEE} ${totalPrincipalCollected.toLocaleString("en-IN")}</span></div>
+    <div class="info-box"><label>${t("bank_loan.interest_collected")}</label><span class="success">${RUPEE} ${totalInterestCollected.toLocaleString("en-IN")}</span></div>
+    <div class="info-box"><label>${t("bank_loan.total_outstanding")}</label><span class="danger">${RUPEE} ${(totalOutstandingPrincipal + totalOutstandingInterest).toLocaleString("en-IN")}</span></div>
+    <div class="info-box"><label>${t("bank_loan.members_allocated")}</label><span>${allocations.length}</span></div>
+    <div class="info-box"><label>${t("bank_loan.members_completed")}</label><span>${membersCompleted}</span></div>
+    <div class="info-box"><label>${t("annualInterestRate")}</label><span>${bankLoan.annualInterestRate}%</span></div>
+  </div>
+
+  <!-- Recovery Report -->
+  <h3>${t("bank_loan.recovery_report")}</h3>
+  <table>
+    <thead>
+      <tr>
+        <th>Sr.</th>
+        <th>${t("bank_loan.member_name")}</th>
+        <th>${t("bank_loan.allocated_principal")}</th>
+        <th>${t("bank_loan.principal_paid")}</th>
+        <th>${t("bank_loan.interest_paid")}</th>
+        <th>${t("bank_loan.outstanding_principal")}</th>
+        <th>${t("bank_loan.outstanding_interest")}</th>
+        <th>${t("bank_loan.recovery_pct")}</th>
+        <th>${t("bank_loan.status")}</th>
+      </tr>
+    </thead>
+    <tbody>`;
+
+  allocations.forEach((alloc, idx) => {
+    const member = members.find(m => m.id === alloc.memberId);
+    const pct = alloc.allocatedPrincipal > 0
+      ? Math.min(100, Math.round((alloc.totalPrincipalPaid / alloc.allocatedPrincipal) * 100))
+      : 0;
+    html += `
+      <tr>
+        <td>${idx + 1}</td>
+        <td>${member?.name || "—"}</td>
+        <td>${RUPEE} ${alloc.allocatedPrincipal.toLocaleString("en-IN")}</td>
+        <td class="success">${RUPEE} ${alloc.totalPrincipalPaid.toLocaleString("en-IN")}</td>
+        <td class="success">${RUPEE} ${alloc.totalInterestPaid.toLocaleString("en-IN")}</td>
+        <td class="${alloc.outstandingBalance > 0 ? 'danger' : 'success'}">${RUPEE} ${alloc.outstandingBalance.toLocaleString("en-IN")}</td>
+        <td class="${alloc.outstandingInterest > 0 ? 'danger' : 'success'}">${RUPEE} ${alloc.outstandingInterest.toLocaleString("en-IN")}</td>
+        <td>${pct}%</td>
+        <td><span class="${alloc.status === 'completed' ? 'completed-badge' : 'active-badge'}">${alloc.status}</span></td>
+      </tr>`;
+  });
+
+  html += `
+      <tr class="footer-row">
+        <td colspan="2"><strong>${t("bank_loan.total")}</strong></td>
+        <td><strong>${RUPEE} ${totalAllocated.toLocaleString("en-IN")}</strong></td>
+        <td class="success"><strong>${RUPEE} ${totalPrincipalCollected.toLocaleString("en-IN")}</strong></td>
+        <td class="success"><strong>${RUPEE} ${totalInterestCollected.toLocaleString("en-IN")}</strong></td>
+        <td class="danger"><strong>${RUPEE} ${totalOutstandingPrincipal.toLocaleString("en-IN")}</strong></td>
+        <td class="danger"><strong>${RUPEE} ${totalOutstandingInterest.toLocaleString("en-IN")}</strong></td>
+        <td><strong>${totalAllocated > 0 ? Math.round((totalPrincipalCollected / totalAllocated) * 100) : 0}%</strong></td>
+        <td>${membersCompleted}/${allocations.length}</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="generated">${t("bank_loan.generated_on")}: ${today}</div>
+</div>
+</body>
+</html>`;
+
+  return printOrShareHtml(
+    html,
+    `BankLoan_Statement_${bankLoan.bankName.replace(/\s+/g, "_")}.pdf`,
+    t
+  );
+}

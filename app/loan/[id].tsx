@@ -57,6 +57,7 @@ export default function LoanDetailScreen() {
   const [dialog, setDialog] = useState<DialogType>(null);
   const [rejectReason, setRejectReason] = useState("");
   const [deleteRepaymentId, setDeleteRepaymentId] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const [resolutionError, setResolutionError] = useState(false);
 
   if (!loan) {
@@ -651,12 +652,31 @@ export default function LoanDetailScreen() {
         )}
 
         {canDelete && (
-          <Pressable style={styles.deleteLoanBtn} onPress={() => setDialog("deleteLoan")}>
-            <Ionicons name="trash-outline" size={20} color={Colors.light.danger} />
-            <Text style={styles.deleteLoanBtnText}>
-              {t("auto.delete_loan")}
-            </Text>
-          </Pressable>
+          <View style={{ marginTop: 24, paddingBottom: 24 }}>
+            {!confirmDelete ? (
+              <Pressable style={styles.deleteLoanBtn} onPress={() => setConfirmDelete(true)}>
+                <Ionicons name="trash-outline" size={20} color={Colors.light.danger} />
+                <Text style={styles.deleteLoanBtnText}>
+                  {t("auto.delete_loan")}
+                </Text>
+              </Pressable>
+            ) : (
+              <View style={{ gap: 10 }}>
+                <Text style={{ color: Colors.light.danger, textAlign: "center", marginBottom: 5 }}>
+                  {t("auto.this_loan_record_will_be")}
+                </Text>
+                <View style={{ flexDirection: "row", gap: 10 }}>
+                  <Pressable style={[styles.deleteLoanBtn, { flex: 1, backgroundColor: Colors.light.card, borderWidth: 1, borderColor: Colors.light.border, marginTop: 0 }]} onPress={() => setConfirmDelete(false)}>
+                    <Text style={[styles.deleteLoanBtnText, { color: Colors.light.text }]}>{t("auto.keep")}</Text>
+                  </Pressable>
+                  <Pressable style={[styles.deleteLoanBtn, { flex: 1, backgroundColor: Colors.light.danger, marginTop: 0 }]} onPress={handleDeleteLoan}>
+                    <Ionicons name="warning-outline" size={20} color="#fff" />
+                    <Text style={[styles.deleteLoanBtnText, { color: '#fff' }]}>{t("auto.delete")}</Text>
+                  </Pressable>
+                </View>
+              </View>
+            )}
+          </View>
         )}
       </ScrollView>
 

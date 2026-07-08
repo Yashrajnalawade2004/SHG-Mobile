@@ -240,6 +240,7 @@ export const groupBankLoans = pgTable("group_bank_loans", {
   bankName: text("bank_name").notNull(),
   branch: text("branch"),
   accountNumber: varchar("account_number", { length: 50 }),
+  ifscCode: varchar("ifsc_code", { length: 20 }),
   sanctionDate: timestamp("sanction_date").notNull(),
   amount: integer("amount").notNull(),
   annualInterestRate: real("annual_interest_rate").notNull(),
