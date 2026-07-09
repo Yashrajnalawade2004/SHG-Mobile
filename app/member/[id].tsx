@@ -55,7 +55,7 @@ export default function MemberDetailScreen() {
   const pendingPayments = memberPayments.filter((p) => p.status === "pending").length;
 
   const memberLoans = loans.filter((l) => l.memberId === member.id);
-  const approvedLoans = memberLoans.filter((l) => l.status === "approved");
+  const approvedLoans = memberLoans.filter((l) => ["approved", "completed"].includes(l.status));
   const totalLoanAmount = approvedLoans.reduce((sum, l) => sum + l.amount, 0);
   const outstandingLoan = approvedLoans.reduce((sum, l) => sum + l.remainingBalance, 0);
 
@@ -148,7 +148,7 @@ export default function MemberDetailScreen() {
       title: t("loans.loanHistory"),
       subtitle: l.resolutionNumber ? `${t("history.resolution_number")}: ${l.resolutionNumber}` : `${l.interest}% / ${l.duration} ${t("loans.mo")}`,
       amount: l.amount.toString(),
-      statusColor: l.status === "approved" ? Colors.light.success : l.status === "requested" ? Colors.light.pending : Colors.light.danger,
+      statusColor: ["approved", "completed"].includes(l.status) ? Colors.light.success : l.status === "requested" ? Colors.light.pending : Colors.light.danger,
       statusLabel: t(l.status),
       routeTo: { pathname: "/loan/[id]", params: { id: l.id } }
     });

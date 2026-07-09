@@ -261,10 +261,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const totalSavings = payments.filter(p => p.status === "confirmed" && p.amount > 0).reduce((sum, p) => sum + p.amount, 0);
         const totalPenalties = payments.filter(p => p.status === "confirmed" && p.lateFee > 0).reduce((sum, p) => sum + p.lateFee, 0);
         
-        const activeLoansCount = loans.filter(l => l.status === "approved" && l.remainingBalance > 0).length;
-        const completedLoansCount = loans.filter(l => l.status === "approved" && l.remainingBalance <= 0).length;
+        const activeLoansCount = loans.filter(l => ["approved", "completed"].includes(l.status) && l.remainingBalance > 0).length;
+        const completedLoansCount = loans.filter(l => l.status === "completed" || (l.status === "approved" && l.remainingBalance <= 0)).length;
 
-        const approvedLoans = loans.filter(l => l.status === "approved");
+        const approvedLoans = loans.filter(l => ["approved", "completed"].includes(l.status));
         const totalPrincipalDisbursed = approvedLoans.reduce((sum, l) => sum + l.amount, 0);
         
         // Exact alignment with SHG rules using ONLY snapshot fields from the Loan object

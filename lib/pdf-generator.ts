@@ -310,10 +310,8 @@ export async function generateLoanPassbookReport(
   group: any,
   t: any
 ) {
-  let html = getHeaderHtml(group, t("passbook") + " - " + (member ? member.name : "Unknown"), t);
-  const isReducingBalance = loan.calculationMethod === 'reducing_balance';
-
-  html += `
+  const isReducingBalance = loan?.calculationMethod === 'reducing_balance';
+  let tablesHtml = `
     <div style="margin-bottom:20px; border:1px solid #ddd; padding:15px; border-radius:8px;">
       <h3 style="margin-top:0;">${t("loan_summary")}</h3>
       <table style="width:100%; border-collapse:collapse; font-size:12px;">
@@ -331,10 +329,9 @@ export async function generateLoanPassbookReport(
     </div>
   `;
 
-
   if (isReducingBalance && loan.remainingBalance > 0) {
     const rec = getCurrentLoanRecommendation(loan);
-    html += `
+    tablesHtml += `
       <div style="margin-bottom:20px; border:1px solid #ddd; padding:15px; border-radius:8px; background-color: #f8fafc;">
         <h4 style="margin-top:0; color: #0f172a;">${t("recommended_monthly_payment")}</h4>
         <table style="width:100%; border-collapse:collapse; font-size:12px;">
@@ -353,7 +350,7 @@ export async function generateLoanPassbookReport(
     `;
   }
 
-  html += `<table style="width:100%; border-collapse:collapse; margin-bottom:20px; font-size:10px;">
+  tablesHtml += `<table style="width:100%; border-collapse:collapse; margin-bottom:20px; font-size:10px;">
     <tr style="background:#f1f5f9; border-bottom:2px solid #cbd5e1;">
       <th style="padding:6px; text-align:left;">${t("receipt_number")}</th>
       <th style="padding:6px; text-align:left;">${t("date")}</th>
@@ -372,7 +369,7 @@ export async function generateLoanPassbookReport(
     const isRowRB = isReducingBalance;
     const dateStr = formatDate(isRowRB ? (r.date) : r.date);
     
-    html += `<tr style="border-bottom:1px solid #e2e8f0; background: ${i % 2 === 0 ? '#fff' : '#f8fafc'};">
+    tablesHtml += `<tr style="border-bottom:1px solid #e2e8f0; background: ${i % 2 === 0 ? '#fff' : '#f8fafc'};">
       <td style="padding:6px;">${r.receiptNo || 'R-'+(i+1)}</td>
       <td style="padding:6px;">${dateStr}</td>
       <td style="padding:6px; text-align:right;">${isRowRB ? Math.round(r.openingPrincipal || 0).toLocaleString("en-IN") : '—'}</td>
@@ -386,10 +383,21 @@ export async function generateLoanPassbookReport(
     </tr>`;
   }
 
-  html += `</table>`;
-  html += getFooterHtml(t);
+  tablesHtml += `</table>`;
   
-  return openAsPdf(html, `Loan_Passbook_${member?.name?.replace(/\s+/g, "_") || 'Unknown'}.pdf`);
+  const finalHtml = buildStandardPdfTemplate({
+    title: t("passbook") + " - " + (member ? member.name : "Unknown"),
+    group,
+    presidentName: "—",
+    treasurerName: "—",
+    generatedBy: "System",
+    period: "All Time",
+    reportId: generateReportId(),
+    tablesHtml,
+    t
+  });
+  
+  return openAsPdf(finalHtml, `Loan_Passbook_${member?.name?.replace(/\s+/g, "_") || 'Unknown'}.pdf`);
 }
 
 // ─── BANK LOAN PDF FUNCTIONS ──────────────────────────────────────────────────
@@ -420,150 +428,107 @@ export async function generateBankLoanPassbookPDF({
   const today = formatDateTime(new Date());
   const sortedLedger = [...ledger].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
-  const totalInterestCharged = sortedLedger.filter(e => e.type !== "disbursement").reduce((s, e) => s + (e.interestCharged || 0), 0);
-
-  let html = `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Bank Loan Passbook</title>
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: Arial, sans-serif; color: #1a1a1a; background: #fff; font-size: 12px; }
-    .page { padding: 24px; max-width: 900px; margin: 0 auto; }
-    .bank-header { background: linear-gradient(135deg, #1B4F72 0%, #2980B9 100%); color: white; padding: 20px 24px; border-radius: 8px 8px 0 0; margin-bottom: 0; }
-    .bank-header h1 { font-size: 22px; font-weight: bold; margin-bottom: 4px; }
-    .bank-header h2 { font-size: 15px; font-weight: normal; opacity: 0.85; }
-    .account-section { background: #F0F8FF; border: 2px solid #2980B9; border-top: none; border-radius: 0 0 8px 8px; padding: 16px 24px; margin-bottom: 20px; }
-    .account-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-    .account-field label { font-size: 10px; color: #666; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px; }
-    .account-field span { display: block; font-size: 14px; font-weight: bold; color: #1B4F72; }
-    .summary-table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
-    .summary-table th { background: #1B4F72; color: white; padding: 10px; text-align: left; font-size: 11px; }
-    .summary-table td { padding: 10px; border-bottom: 1px solid #E0E0E0; }
-    .summary-table tr:nth-child(even) td { background: #F5F5F5; }
-    .ledger-table { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 11px; }
-    .ledger-table th { background: #1B4F72; color: white; padding: 8px 6px; text-align: right; font-weight: bold; }
-    .ledger-table th:first-child { text-align: left; }
-    .ledger-table td { padding: 7px 6px; border-bottom: 1px solid #E8E8E8; text-align: right; }
-    .ledger-table td:first-child, .ledger-table td:nth-child(2), .ledger-table td:nth-child(3) { text-align: left; }
-    .ledger-table tr:nth-child(even) td { background: #FAFAFA; }
-    .ledger-table .disbursement td { background: #E8F5E9 !important; font-weight: bold; color: #1B6B4A; }
-    .ledger-table .footer-row td { background: #EBF5FB; font-weight: bold; border-top: 2px solid #1B4F72; }
-    .danger { color: #C0392B; }
-    .success { color: #1B6B4A; }
-    .generated { font-size: 10px; color: #999; text-align: right; margin-top: 16px; }
-    h3 { font-size: 14px; color: #1B4F72; margin-bottom: 10px; border-bottom: 2px solid #1B4F72; padding-bottom: 4px; }
-  </style>
-</head>
-<body>
-<div class="page">
-
-  <!-- Bank Header -->
-  <div class="bank-header">
-    <h1>${bankLoan.bankName}</h1>
-    <h2>${bankLoan.branch || ""} ${bankLoan.accountNumber ? "| A/C: " + bankLoan.accountNumber : ""} ${bankLoan.ifscCode ? "| IFSC: " + bankLoan.ifscCode : ""}</h2>
-  </div>
-
-  <!-- Account Details -->
-  <div class="account-section">
-    <div class="account-grid">
-      <div class="account-field">
-        <label>${t("bank_loan.account_holder")}</label>
-        <span>${member.name}</span>
-      </div>
-      <div class="account-field">
-        <label>${t("bank_loan.allocated_principal")}</label>
-        <span>${RUPEE} ${allocation.allocatedPrincipal.toLocaleString("en-IN")}</span>
-      </div>
-      <div class="account-field">
-        <label>${t("annualInterestRate")}</label>
-        <span>${bankLoan.annualInterestRate}% p.a. (${(bankLoan.annualInterestRate / 12).toFixed(2)}% monthly)</span>
-      </div>
-      <div class="account-field">
-        <label>${t("durationMonths")}</label>
-        <span>${bankLoan.durationMonths} months</span>
-      </div>
-      <div class="account-field">
-        <label>${t("sanctionDate")}</label>
-        <span>${formatDate(bankLoan.sanctionDate)}</span>
-      </div>
-      <div class="account-field">
-        <label>SHG / Group</label>
-        <span>${group?.name || ""}</span>
-      </div>
+  const totalInterestCharged = sortedLedger.reduce((sum, e) => sum + (e.interestCharged || 0), 0);
+  
+  let tablesHtml = `
+  <div style="margin-bottom: 20px; padding: 15px; border: 1px solid #e2e8f0; border-radius: 8px; background: #f8fafc;">
+    <h3 style="margin-top: 0; color: #0f172a; border-bottom: 2px solid #cbd5e1; padding-bottom: 5px; font-size: 14px;">${bankLoan.bankName}</h3>
+    <div style="font-size: 10px; color: #475569; margin-bottom: 10px;">
+      ${bankLoan.branch || ""} ${bankLoan.accountNumber ? "| A/C: " + bankLoan.accountNumber : ""} ${bankLoan.ifscCode ? "| IFSC: " + bankLoan.ifscCode : ""}
     </div>
+    
+    <table style="width: 100%; font-size: 10px; margin-bottom: 0; border: none;">
+      <tr>
+        <td style="border: none; padding: 4px 0;"><strong>${t("bank_loan.account_holder")}:</strong> ${member.name}</td>
+        <td style="border: none; padding: 4px 0;"><strong>${t("bank_loan.allocated_principal")}:</strong> Rs. ${allocation.allocatedPrincipal.toLocaleString("en-IN")}</td>
+        <td style="border: none; padding: 4px 0;"><strong>${t("annualInterestRate")}:</strong> ${bankLoan.annualInterestRate}% p.a.</td>
+      </tr>
+      <tr>
+        <td style="border: none; padding: 4px 0;"><strong>${t("durationMonths")}:</strong> ${bankLoan.durationMonths} ${t("auto.mo", {defaultValue: "months"})}</td>
+        <td style="border: none; padding: 4px 0;"><strong>${t("sanctionDate")}:</strong> ${formatDate(bankLoan.sanctionDate)}</td>
+        <td style="border: none; padding: 4px 0;"></td>
+      </tr>
+    </table>
   </div>
 
-  <!-- Account Summary -->
-  <h3>${t("bank_loan.account_summary")}</h3>
-  <table class="summary-table">
-    <thead><tr><th>${t("bank_loan.detail")}</th><th>${t("bank_loan.amount")}</th></tr></thead>
+  <h3 style="font-size: 12px; margin-bottom: 10px; color: #0f172a;">${t("bank_loan.account_summary")}</h3>
+  <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 10px;">
+    <thead>
+      <tr style="background:#0f172a; color:#fff;">
+        <th style="padding: 6px; text-align: left; border: 1px solid #0f172a;">${t("bank_loan.detail")}</th>
+        <th style="padding: 6px; text-align: right; border: 1px solid #0f172a;">${t("bank_loan.amount")}</th>
+      </tr>
+    </thead>
     <tbody>
-      <tr><td>${t("bank_loan.allocated_principal")}</td><td>${RUPEE} ${allocation.allocatedPrincipal.toLocaleString("en-IN")}</td></tr>
-      <tr><td>${t("bank_loan.principal_paid")}</td><td class="success">${RUPEE} ${allocation.totalPrincipalPaid.toLocaleString("en-IN")}</td></tr>
-      <tr><td>${t("bank_loan.interest_paid")}</td><td class="success">${RUPEE} ${allocation.totalInterestPaid.toLocaleString("en-IN")}</td></tr>
-      <tr><td>${t("bank_loan.outstanding_principal")}</td><td class="${allocation.outstandingBalance > 0 ? 'danger' : 'success'}">${RUPEE} ${allocation.outstandingBalance.toLocaleString("en-IN")}</td></tr>
-      <tr><td>${t("bank_loan.outstanding_interest")}</td><td class="${allocation.outstandingInterest > 0 ? 'danger' : 'success'}">${RUPEE} ${allocation.outstandingInterest.toLocaleString("en-IN")}</td></tr>
-      <tr><td><strong>${t("bank_loan.total_outstanding")}</strong></td><td class="danger"><strong>${RUPEE} ${(allocation.outstandingBalance + allocation.outstandingInterest).toLocaleString("en-IN")}</strong></td></tr>
+      <tr><td style="padding: 6px; border: 1px solid #cbd5e1;">${t("bank_loan.allocated_principal")}</td><td style="padding: 6px; border: 1px solid #cbd5e1; text-align: right;">Rs. ${allocation.allocatedPrincipal.toLocaleString("en-IN")}</td></tr>
+      <tr><td style="padding: 6px; border: 1px solid #cbd5e1;">${t("bank_loan.principal_paid")}</td><td style="padding: 6px; border: 1px solid #cbd5e1; text-align: right; color: #166534;">Rs. ${allocation.totalPrincipalPaid.toLocaleString("en-IN")}</td></tr>
+      <tr><td style="padding: 6px; border: 1px solid #cbd5e1;">${t("bank_loan.interest_paid")}</td><td style="padding: 6px; border: 1px solid #cbd5e1; text-align: right; color: #166534;">Rs. ${allocation.totalInterestPaid.toLocaleString("en-IN")}</td></tr>
+      <tr><td style="padding: 6px; border: 1px solid #cbd5e1;">${t("bank_loan.outstanding_principal")}</td><td style="padding: 6px; border: 1px solid #cbd5e1; text-align: right; color: ${allocation.outstandingBalance > 0 ? '#991b1b' : '#166534'};">Rs. ${allocation.outstandingBalance.toLocaleString("en-IN")}</td></tr>
+      <tr><td style="padding: 6px; border: 1px solid #cbd5e1;">${t("bank_loan.outstanding_interest")}</td><td style="padding: 6px; border: 1px solid #cbd5e1; text-align: right; color: ${allocation.outstandingInterest > 0 ? '#991b1b' : '#166534'};">Rs. ${allocation.outstandingInterest.toLocaleString("en-IN")}</td></tr>
+      <tr style="background: #e2e8f0; font-weight: bold;"><td style="padding: 6px; border: 1px solid #cbd5e1;">${t("bank_loan.total_outstanding")}</td><td style="padding: 6px; border: 1px solid #cbd5e1; text-align: right; color: #991b1b;">Rs. ${(allocation.outstandingBalance + allocation.outstandingInterest).toLocaleString("en-IN")}</td></tr>
     </tbody>
   </table>
 
-  <!-- Passbook Ledger -->
-  <h3>${t("bank_loan.passbook")}</h3>
-  <table class="ledger-table">
+  <h3 style="font-size: 12px; margin-bottom: 10px; color: #0f172a;">${t("bank_loan.passbook")}</h3>
+  <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 9px;">
     <thead>
-      <tr>
-        <th style="text-align:left">${t("bank_loan.date")}</th>
-        <th style="text-align:left">${t("bank_loan.receipt_no")}</th>
-        <th style="text-align:left">${t("bank_loan.particulars")}</th>
-        <th>${t("bank_loan.opening_principal")}</th>
-        <th>${t("bank_loan.interest_charged")}</th>
-        <th>${t("bank_loan.principal_paid")}</th>
-        <th>${t("bank_loan.total_payment")}</th>
-        <th>${t("bank_loan.closing_principal")}</th>
-        <th>${t("bank_loan.outstanding_interest")}</th>
+      <tr style="background:#0f172a; color:#fff;">
+        <th style="padding: 6px; text-align: left; border: 1px solid #0f172a;">${t("bank_loan.date")}</th>
+        <th style="padding: 6px; text-align: left; border: 1px solid #0f172a;">${t("bank_loan.receipt_no")}</th>
+        <th style="padding: 6px; text-align: left; border: 1px solid #0f172a;">${t("bank_loan.particulars")}</th>
+        <th style="padding: 6px; text-align: right; border: 1px solid #0f172a;">${t("bank_loan.opening_principal")}</th>
+        <th style="padding: 6px; text-align: right; border: 1px solid #0f172a;">${t("bank_loan.interest_charged")}</th>
+        <th style="padding: 6px; text-align: right; border: 1px solid #0f172a;">${t("bank_loan.principal_paid")}</th>
+        <th style="padding: 6px; text-align: right; border: 1px solid #0f172a;">${t("bank_loan.total_payment")}</th>
+        <th style="padding: 6px; text-align: right; border: 1px solid #0f172a;">${t("bank_loan.closing_principal")}</th>
+        <th style="padding: 6px; text-align: right; border: 1px solid #0f172a;">${t("bank_loan.outstanding_interest")}</th>
       </tr>
     </thead>
     <tbody>`;
 
-  sortedLedger.forEach(entry => {
+  sortedLedger.forEach((entry, i) => {
     const isDisbursement = entry.type === "disbursement";
-    html += `
-      <tr class="${isDisbursement ? 'disbursement' : ''}">
-        <td>${formatDate(entry.date)}</td>
-        <td>${entry.receiptNo || "—"}</td>
-        <td>${isDisbursement ? t("bank_loan.disbursement") : t("bank_loan.repayment")}</td>
-        <td>${(entry.openingPrincipal || 0).toLocaleString("en-IN")}</td>
-        <td>${(entry.interestCharged || 0).toLocaleString("en-IN")}</td>
-        <td>${(entry.principalPaid || 0).toLocaleString("en-IN")}</td>
-        <td><strong>${(entry.paymentReceived || 0).toLocaleString("en-IN")}</strong></td>
-        <td style="color:${(entry.closingPrincipal || 0) > 0 ? '#C0392B' : '#1B6B4A'}">${(entry.closingPrincipal || 0).toLocaleString("en-IN")}</td>
-        <td style="color:${(entry.outstandingInterest || 0) > 0 ? '#C0392B' : '#1B6B4A'}">${(entry.outstandingInterest || 0).toLocaleString("en-IN")}</td>
+    tablesHtml += `
+      <tr style="background: ${isDisbursement ? '#dcfce7' : (i % 2 === 0 ? '#fff' : '#f8fafc')};">
+        <td style="padding: 6px; border: 1px solid #cbd5e1;">${formatDate(entry.date)}</td>
+        <td style="padding: 6px; border: 1px solid #cbd5e1;">${entry.receiptNo || "—"}</td>
+        <td style="padding: 6px; border: 1px solid #cbd5e1;">${isDisbursement ? t("bank_loan.disbursement") : t("bank_loan.repayment")}</td>
+        <td style="padding: 6px; border: 1px solid #cbd5e1; text-align: right;">${(entry.openingPrincipal || 0).toLocaleString("en-IN")}</td>
+        <td style="padding: 6px; border: 1px solid #cbd5e1; text-align: right;">${(entry.interestCharged || 0).toLocaleString("en-IN")}</td>
+        <td style="padding: 6px; border: 1px solid #cbd5e1; text-align: right;">${(entry.principalPaid || 0).toLocaleString("en-IN")}</td>
+        <td style="padding: 6px; border: 1px solid #cbd5e1; text-align: right; font-weight: bold;">${(entry.paymentReceived || 0).toLocaleString("en-IN")}</td>
+        <td style="padding: 6px; border: 1px solid #cbd5e1; text-align: right; color:${(entry.closingPrincipal || 0) > 0 ? '#991b1b' : '#166534'}">${(entry.closingPrincipal || 0).toLocaleString("en-IN")}</td>
+        <td style="padding: 6px; border: 1px solid #cbd5e1; text-align: right; color:${(entry.outstandingInterest || 0) > 0 ? '#991b1b' : '#166534'}">${(entry.outstandingInterest || 0).toLocaleString("en-IN")}</td>
       </tr>`;
   });
 
-  html += `
-      <tr class="footer-row">
-        <td colspan="3"><strong>${t("bank_loan.total")}</strong></td>
-        <td>—</td>
-        <td>${totalInterestCharged.toLocaleString("en-IN")}</td>
-        <td>${allocation.totalPrincipalPaid.toLocaleString("en-IN")}</td>
-        <td><strong>${(allocation.totalPrincipalPaid + allocation.totalInterestPaid).toLocaleString("en-IN")}</strong></td>
-        <td class="danger">${allocation.outstandingBalance.toLocaleString("en-IN")}</td>
-        <td class="danger">${allocation.outstandingInterest.toLocaleString("en-IN")}</td>
+  tablesHtml += `
+      <tr style="background: #e2e8f0; font-weight: bold; border-top: 2px solid #0f172a;">
+        <td colspan="3" style="padding: 6px; border: 1px solid #cbd5e1;">${t("bank_loan.total")}</td>
+        <td style="padding: 6px; border: 1px solid #cbd5e1; text-align: right;">—</td>
+        <td style="padding: 6px; border: 1px solid #cbd5e1; text-align: right;">${totalInterestCharged.toLocaleString("en-IN")}</td>
+        <td style="padding: 6px; border: 1px solid #cbd5e1; text-align: right;">${allocation.totalPrincipalPaid.toLocaleString("en-IN")}</td>
+        <td style="padding: 6px; border: 1px solid #cbd5e1; text-align: right;">${(allocation.totalPrincipalPaid + allocation.totalInterestPaid).toLocaleString("en-IN")}</td>
+        <td style="padding: 6px; border: 1px solid #cbd5e1; text-align: right; color: #991b1b;">${allocation.outstandingBalance.toLocaleString("en-IN")}</td>
+        <td style="padding: 6px; border: 1px solid #cbd5e1; text-align: right; color: #991b1b;">${allocation.outstandingInterest.toLocaleString("en-IN")}</td>
       </tr>
     </tbody>
-  </table>
+  </table>`;
 
-  <div class="generated">${t("bank_loan.generated_on")}: ${today} | ${group?.name || ""}</div>
-</div>
-</body>
-</html>`;
+  const finalHtml = buildStandardPdfTemplate({
+    title: t("bank_loan.passbook", { defaultValue: "Bank Loan Passbook" }),
+    group,
+    presidentName: group?.presidentName || "—",
+    treasurerName: group?.treasurerName || "—",
+    generatedBy: "System",
+    period: "All Time",
+    reportId: generateReportId(),
+    tablesHtml,
+    t
+  });
 
   return openAsPdf(
-    html,
+    finalHtml,
     `BankLoan_Passbook_${member?.name?.replace(/\s+/g, "_") || "Unknown"}.pdf`
   );
 }
@@ -990,7 +955,7 @@ export async function generateFinancialReport({ group, groupMembers, payments, l
   const totalSavings = payments.filter((p:any) => p.status === "confirmed" && p.amount > 0).reduce((sum:number, p:any) => sum + p.amount, 0);
   const totalLate = payments.filter((p:any) => p.status === "confirmed" && p.lateFee > 0).reduce((sum:number, p:any) => sum + p.lateFee, 0);
   
-  const approvedLoans = loans.filter((l:any) => l.status === "approved");
+  const approvedLoans = loans.filter((l:any) => ["approved", "completed"].includes(l.status));
   const totalDisbursed = approvedLoans.reduce((sum:number, l:any) => sum + l.amount, 0);
   const principalCollected = approvedLoans.reduce((sum:number, l:any) => sum + (l.totalPrincipalPaid || 0), 0);
   const interestCollected = approvedLoans.reduce((sum:number, l:any) => sum + (l.totalInterestPaid || 0), 0);
@@ -1050,7 +1015,7 @@ export async function generateInternalLoanRegister({ group, groupMembers, loans,
   const pres = groupMembers.find((m: any) => m.role === "president")?.name || "—";
   const treas = groupMembers.find((m: any) => m.role === "treasurer")?.name || "—";
   
-  let fLoans = loans.filter((l:any)=>l.status==="approved");
+  let fLoans = loans.filter((l:any)=>["approved", "completed"].includes(l.status));
   if (loanFilter === "active") fLoans = fLoans.filter((l:any)=>l.remainingBalance>0);
   if (loanFilter === "completed") fLoans = fLoans.filter((l:any)=>l.remainingBalance<=0);
   // date filter applies to loan start date
@@ -1196,7 +1161,7 @@ export async function generateLoanRecoveryReport({ group, groupMembers, loans, b
   const allRecoveries = [];
   
   // Internal Loans
-  loans.filter((l:any)=>l.status==="approved" && l.remainingBalance > 0).forEach((l:any) => {
+  loans.filter((l:any)=>["approved", "completed"].includes(l.status) && l.remainingBalance > 0).forEach((l:any) => {
     allRecoveries.push({
       member: groupMembers.find((m:any)=>m.id===l.memberId)?.name || "Unknown",
       type: "Internal",

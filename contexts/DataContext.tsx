@@ -49,7 +49,8 @@ export type LoanStatus =
   | "pending_president"
   | "treasurer_rejected"
   | "approved"
-  | "rejected";
+  | "rejected"
+  | "completed";
 
 export interface Loan {
   id: string;

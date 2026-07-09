@@ -105,7 +105,7 @@ export default function HistoryScreen() {
   };
 
   const renderLoanItem = ({ item }: { item: typeof loans[0] }) => {
-    const statusColor = item.status === "approved" ? Colors.light.success
+    const statusColor = (item.status === "approved" || item.status === "completed") ? Colors.light.success
       : (item.status === "rejected" || item.status === "treasurer_rejected") ? Colors.light.danger
       : item.status === "pending_treasurer" ? "#D97706"
       : Colors.light.pending;

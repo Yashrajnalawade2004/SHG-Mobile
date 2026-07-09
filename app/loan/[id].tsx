@@ -207,7 +207,7 @@ export default function LoanDetailScreen() {
   const showTreasurerActions = isTreasurer && loan.status === "pending_treasurer";
   const showPresidentActions = isPresident && (loan.status === "pending_president" || loan.status === "pending_treasurer");
   const isDirectOverride = loan.presidentOverride === true;
-  const isFinal = loan.status === "approved" || loan.status === "rejected" || loan.status === "treasurer_rejected";
+  const isFinal = loan.status === "approved" || loan.status === "completed" || loan.status === "rejected" || loan.status === "treasurer_rejected";
 
   const previewRepayAmount = parseInt(repayAmount) || 0;
   const repaymentPreview = loan.calculationMethod === "reducing_balance" 
@@ -242,7 +242,7 @@ export default function LoanDetailScreen() {
         <View style={[styles.statusBanner, { backgroundColor: color + "18" }]}>
           {loan.status === "pending_treasurer" && <Ionicons name="wallet" size={16} color={color} />}
           {loan.status === "pending_president" && <Ionicons name="shield" size={16} color={color} />}
-          {loan.status === "approved" && <Ionicons name="checkmark-circle" size={16} color={color} />}
+          {(loan.status === "approved" || loan.status === "completed") && <Ionicons name="checkmark-circle" size={16} color={color} />}
           {(loan.status === "rejected" || loan.status === "treasurer_rejected") && (
             <Ionicons name="close-circle" size={16} color={color} />
           )}
@@ -262,7 +262,7 @@ export default function LoanDetailScreen() {
           <View style={[styles.workflowNote, { backgroundColor: "#F59E0B15", borderColor: "#FDE68A" }]}>
             <Ionicons name="shield-checkmark" size={14} color="#D97706" />
             <Text style={[styles.workflowNoteText, { color: "#D97706" }]}>
-              {loan.status === "approved" ? t("approved_directly") : t("rejected_directly")}
+              {(loan.status === "approved" || loan.status === "completed") ? t("approved_directly") : t("rejected_directly")}
             </Text>
           </View>
         )}
@@ -592,7 +592,7 @@ export default function LoanDetailScreen() {
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionTitle}>{t("repayment")}</Text>
-              {isPresident && loan.status === "approved" && (
+              {isPresident && (loan.status === "approved" || loan.status === "completed") && (
                 <Pressable onPress={() => setShowRepay(!showRepay)}>
                   <Ionicons name={showRepay ? "close" : "add-circle"} size={24} color={Colors.light.primary} />
                 </Pressable>
