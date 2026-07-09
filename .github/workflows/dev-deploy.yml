@@ -1,0 +1,89 @@
+name: Deploy Dev
+
+on:
+  push:
+    branches:
+      - dev
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-dev
+  cancel-in-progress: true
+
+env:
+  DEPLOY_PATH: /opt/shg/dev
+  SERVICE: shg-dev
+  SSH_PORT: ${{ secrets.EC2_SSH_PORT || '22' }}
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Build Web Bundle
+        run: npm run build:web
+        env:
+          NODE_ENV: production
+
+      - name: Build Express Server
+        run: npm run server:build
+        env:
+          NODE_ENV: productionn
+
+      - name: Configure SSH
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -p "$SSH_PORT" -H "${{ secrets.EC2_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Create Release Directory
+        run: |
+          RELEASE="${{ github.sha }}"
+          ssh -i ~/.ssh/deploy_key -p "$SSH_PORT" \
+            "${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}" \
+            "mkdir -p $DEPLOY_PATH/releases/$RELEASE"
+
+      - name: Upload Release
+        run: |
+          RELEASE="${{ github.sha }}"
+          rsync -az --delete \
+            -e "ssh -i ~/.ssh/deploy_key -p $SSH_PORT" \
+            --exclude='.git' \
+            --exclude='/node_modules' \
+            --exclude='.github' \
+            --exclude='.expo' \
+            --exclude='android' \
+            --exclude='ios' \
+            --exclude='attached_assets' \
+            --exclude='*.zip' \
+            ./ "${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:$DEPLOY_PATH/releases/$RELEASE/"
+
+      - name: Activate Release
+        run: |
+          RELEASE="${{ github.sha }}"
+          ssh -i ~/.ssh/deploy_key -p "$SSH_PORT" \
+            "${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}" \
+            "bash -s -- '$DEPLOY_PATH' '$RELEASE' '$SERVICE'" \
+            < deploy/scripts/remote-deploy.sh
+
+      - name: Smoke Test
+        run: |
+          ssh -i ~/.ssh/deploy_key -p "$SSH_PORT" \
+            "${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}" \
+            "curl -fsS http://127.0.0.1:5001/ >/dev/null"
+
+      - name: Deployment Complete
+        run: echo "✅ Deployment completed successfully!"

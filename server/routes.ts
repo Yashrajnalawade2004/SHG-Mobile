@@ -5,6 +5,7 @@ import { storage } from "./storage";
 import { registerSuperAdminRoutes } from "./super-admin-routes";
 import { registerInvitationRoutes } from "./invitation-routes";
 import { resolveRepaymentAmounts, calculateNextLedgerEntry } from "../shared/accounting";
+import { applyBankLoanRepayment, generateBankLoanReceiptNo } from "../shared/bankLoanAccounting";
 import Groq from "groq-sdk";
 import { getDb } from "./db";
 import * as schema from "../shared/schema";
@@ -66,6 +67,14 @@ export function requireSameGroup(
   next();
 }
 
+function now(req: any) {
+  if (req.body && req.body.deviceTime) {
+    const d = new Date(req.body.deviceTime);
+    if (!isNaN(d.getTime())) return d;
+  }
+  return new Date();
+}
+
 export async function registerRoutes(app: Express): Promise<Server> {
   // ─── SUPER ADMIN & INVITATIONS ──────────────────────────────────────────────
   registerSuperAdminRoutes(app);
@@ -107,7 +116,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         phone,
         password,
         village,
-        joinDate: joinDate ? new Date(joinDate) : new Date(),
+        joinDate: joinDate ? new Date(joinDate) : now(req),
         exitDate: exitDate ? new Date(exitDate) : undefined,
         role: "president",
         groupId: existingGroup.groupId,
@@ -157,7 +166,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         phone,
         password,
         village,
-        joinDate: joinDate ? new Date(joinDate) : new Date(),
+        joinDate: joinDate ? new Date(joinDate) : now(req),
         exitDate: exitDate ? new Date(exitDate) : undefined,
         role: "member",
         groupId: group.groupId,
@@ -425,7 +434,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         createdBy: req.currentUser!.id,
         notes: "",
         status: "scheduled",
-        createdAt: new Date(),
+        createdAt: now(req),
       });
       return res.status(201).json(meeting);
     },
@@ -517,7 +526,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         expectedAmount: 0,
         lateFee: 0,
         month: "",
-        date: new Date(),
+        date: now(req),
         mode: paymentMode,
         status: paymentMode === "online" ? "pending_verification" : "pending",
       });
@@ -569,22 +578,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       if (isOverride) {
         updateData.overriddenBy = user.id;
-        updateData.overrideAt = new Date();
+        updateData.overrideAt = now(req);
         if (reason) updateData.overrideReason = reason;
       } else {
         updateData.verifiedBy = user.id;
-        updateData.verifiedAt = new Date();
+        updateData.verifiedAt = now(req);
         
         if (status === "rejected" || status === "payment_not_received") {
           if (reason) updateData.rejectionReason = reason;
           updateData.rejectedBy = user.id;
-          updateData.rejectedAt = new Date();
+          updateData.rejectedAt = now(req);
         }
       }
 
       if (status === "confirmed") {
         updateData.verifiedBy = user.id;
-        updateData.verifiedAt = new Date();
+        updateData.verifiedAt = now(req);
       }
 
       // If verifying, ensure amount is set correctly (expected + late fee)
@@ -713,7 +722,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         notes: notes?.trim() || undefined,
         isActive: true,
         createdBy: req.currentUser!.id,
-        createdAt: new Date().toISOString(),
+        createdAt: now(req).toISOString(),
       });
       return res.status(201).json(bank);
     },
@@ -828,7 +837,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         interest: rate,
         duration: dur,
         status: initialStatus,
-        createdAt: new Date(),
+        createdAt: now(req),
         hasBankLoan: false,
         bankId: undefined,
         bankName: undefined,
@@ -865,7 +874,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const updateData: any = {
         status: "pending_president",
         treasurerActionBy: user.id,
-        treasurerActionAt: new Date(),
+        treasurerActionAt: now(req),
       };
       
       if (req.body.hasBankLoan) {
@@ -915,11 +924,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const updateData: any = {
         status: "treasurer_rejected",
         treasurerActionBy: user.id,
-        treasurerActionAt: new Date(),
+        treasurerActionAt: now(req),
       };
       if (reason) updateData.rejectionReason = reason;
       updateData.rejectedBy = user.id;
-      updateData.rejectedAt = new Date();
+      updateData.rejectedAt = now(req);
 
       const updated = await storage.updateLoan(loanId, updateData);
       return res.json(updated);
@@ -950,7 +959,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         resolutionNo: resolutionNo || "",
         meetingId,
         approvedBy: req.currentUser!.id,
-        approvedAt: new Date(),
+        approvedAt: now(req),
       };
 
       if (loan.calculationMethod === "reducing_balance") {
@@ -959,7 +968,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       if (isOverride) {
         updateData.presidentOverride = true;
-        updateData.overrideAt = new Date();
+        updateData.overrideAt = now(req);
         updateData.overrideReason = "Approved directly by President";
       }
 
@@ -1006,7 +1015,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           paymentReceived: 0,
           closingPrincipal: updated.amount,
           outstandingInterest: 0,
-          date: new Date(),
+          date: now(req),
           type: "disbursement",
           recordedBy: req.currentUser!.id
         });
@@ -1038,7 +1047,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const updateData: any = {
         status: "rejected",
         approvedBy: req.currentUser!.id,
-        approvedAt: new Date(),
+        approvedAt: now(req),
         rejectedBy: req.currentUser!.id,
         rejectedAt: new Date(),
       };
@@ -1046,7 +1055,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       if (isOverride) {
         updateData.presidentOverride = true;
-        updateData.overrideAt = new Date();
+        updateData.overrideAt = now(req);
         updateData.overrideReason = "Rejected directly by President";
       }
 
@@ -1079,6 +1088,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!loan || loan.groupId !== req.currentUser!.groupId) {
         return res.status(404).json({ error: "Loan not found" });
       }
+      if (req.currentUser!.role !== "president" && req.currentUser!.role !== "treasurer" && loan.memberId !== req.currentUser!.id) {
+        return res.status(403).json({ error: "You are not authorized to view this loan." });
+      }
       const repayments = await storage.getRepaymentsByLoanId(loanId);
       return res.json(repayments);
     },
@@ -1093,6 +1105,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!loan || loan.groupId !== req.currentUser!.groupId) {
         return res.status(404).json({ error: "Loan not found" });
       }
+      if (req.currentUser!.role !== "president" && req.currentUser!.role !== "treasurer" && loan.memberId !== req.currentUser!.id) {
+        return res.status(403).json({ error: "You are not authorized to view this loan." });
+      }
       const ledger = await storage.getLoanLedger(loanId);
       return res.json(ledger);
     },
@@ -1106,7 +1121,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (req.currentUser!.groupId !== groupId) {
         return res.status(403).json({ error: "Access denied" });
       }
-      const ledger = await storage.getLoanLedgerByGroupId(groupId);
+      let ledger = await storage.getLoanLedgerByGroupId(groupId);
+      if (req.currentUser!.role !== "president" && req.currentUser!.role !== "treasurer") {
+         const userLoans = await storage.getLoansForMember(groupId, req.currentUser!.id);
+         const userLoanIds = userLoans.map(l => l.id);
+         ledger = ledger.filter(l => userLoanIds.includes(l.loanId));
+      }
       return res.json(ledger);
     },
   );
@@ -1114,7 +1134,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post(
     "/api/loans/:loanId/repayments",
     requireAuth as any,
-    requirePresident as any,
+    requirePresidentOrTreasurer as any,
     async (req: AuthRequest, res) => {
       const { loanId } = req.params;
       const { amount, shgAmount, bankAmount, remarks } = req.body;
@@ -1145,47 +1165,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // Find how many months have elapsed since last payment, or since approval
         // A simple approach is just charging 1 month of interest every repayment.
         // Or strictly time-based. For now, the accounting function assumes 1 period.
-        const fixedInstallment = loan.fixedPrincipalInstallment || Math.floor(loan.amount / loan.duration);
-        const ledger = calculateNextLedgerEntry(
-          { remainingBalance: loan.remainingBalance, outstandingInterest: loan.outstandingInterest || 0 },
-          shg,
-          loan.interest,
-          fixedInstallment,
-          policy
-        );
-
-        repayment = await storage.recordLoanRepayment(
+        const result = await storage.recordLoanRepayment(
+          loanId,
           {
-            loanId,
             amount: shg + bank,
             shgAmount: shg,
             bankAmount: bank,
-            date: new Date().toISOString(),
+            date: now(req).toISOString(),
             recordedBy: req.currentUser!.id,
             remarks: remarks?.trim() || undefined,
           },
-          {
-            loanId,
-            receiptNo: `REP-${loanId.substring(0, 8).toUpperCase()}-${Date.now().toString().slice(-4)}`,
-            openingPrincipal: ledger.openingPrincipal,
-            interestRateApplied: loan.interest,
-            interestCharged: ledger.interestCharged,
-            interestPaid: ledger.interestPaid,
-            principalPaid: ledger.principalPaid,
-            paymentReceived: ledger.paymentReceived,
-            closingPrincipal: ledger.closingPrincipal,
-            outstandingInterest: ledger.outstandingInterest,
-            date: new Date(),
-            type: "repayment",
-            recordedBy: req.currentUser!.id
-          },
-          {
-            remainingBalance: ledger.closingPrincipal,
-            outstandingInterest: ledger.outstandingInterest,
-            totalPrincipalPaid: (loan.totalPrincipalPaid || 0) + ledger.principalPaid,
-            totalInterestPaid: (loan.totalInterestPaid || 0) + ledger.interestPaid,
-          }
+          policy
         );
+        repayment = result.repayment;
       } else {
         // Legacy flat interest logic
         repayment = await storage.createRepayment({
@@ -1193,7 +1185,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           amount: shg + bank,
           shgAmount: shg,
           bankAmount: bank,
-          date: new Date(),
+          date: now(req),
           recordedBy: req.currentUser!.id,
           remarks: remarks?.trim() || undefined,
         });
@@ -1272,7 +1264,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { groupId } = req.params;
       if (req.currentUser!.groupId !== groupId)
         return res.status(403).json({ error: "Access denied" });
-      const repayments = await storage.getRepaymentsByGroupId(groupId);
+      let repayments = await storage.getRepaymentsByGroupId(groupId);
+      if (req.currentUser!.role !== "president" && req.currentUser!.role !== "treasurer") {
+         const userLoans = await storage.getLoansForMember(groupId, req.currentUser!.id);
+         const userLoanIds = userLoans.map(l => l.id);
+         repayments = repayments.filter(r => userLoanIds.includes(r.loanId));
+      }
       return res.json(repayments);
     },
   );
@@ -1462,25 +1459,63 @@ Reply with ONLY a JSON object, no markdown, no explanation:
 
 
   // ─── GROUP BANK LOAN MODULE ───────────────────────────────────────────────
+  // This is an independent module. It does NOT share any logic with the internal SHG Loan module.
 
+  // GET all bank loans for a group
   app.get(
     "/api/groups/:groupId/bank-loans",
     requireAuth as any,
     async (req: AuthRequest, res) => {
       const { groupId } = req.params;
+      if (req.currentUser!.groupId !== groupId)
+        return res.status(403).json({ error: "Access denied" });
       const bankLoans = await storage.getGroupBankLoansByGroupId(groupId);
       return res.json(bankLoans);
     }
   );
 
-  
+  // POST create a new group bank loan (President only)
+  app.post(
+    "/api/groups/:groupId/bank-loans",
+    requireAuth as any,
+    requirePresident as any,
+    async (req: AuthRequest, res) => {
+      const { groupId } = req.params;
+      if (req.currentUser!.groupId !== groupId)
+        return res.status(403).json({ error: "Access denied" });
+      const { bankName, branch, accountNumber, ifscCode, sanctionDate, repaymentStartDate, amount, annualInterestRate, durationMonths, remarks } = req.body;
+      if (!bankName || !amount || !annualInterestRate || !durationMonths || !sanctionDate) {
+        return res.status(400).json({ error: "Missing required fields" });
+      }
+      const loan = await storage.createGroupBankLoan({
+        groupId,
+        bankName,
+        branch: branch || null,
+        accountNumber: accountNumber || null,
+        ifscCode: ifscCode || null,
+        sanctionDate: new Date(sanctionDate) as any,
+        repaymentStartDate: repaymentStartDate ? new Date(repaymentStartDate) as any : null,
+        amount: Number(amount),
+        annualInterestRate: Number(annualInterestRate),
+        durationMonths: Number(durationMonths),
+        remarks: remarks || null,
+        status: "active",
+        createdBy: req.currentUser!.id,
+      });
+      return res.status(201).json(loan);
+    }
+  );
 
+  // PATCH update bank loan details (President only)
   app.patch(
     "/api/bank-loans/:id",
     requireAuth as any,
     requirePresident as any,
     async (req: AuthRequest, res) => {
       const { id } = req.params;
+      const bankLoan = await storage.getGroupBankLoanById(id);
+      if (!bankLoan || bankLoan.groupId !== req.currentUser!.groupId)
+        return res.status(403).json({ error: "Access denied" });
       const updates = { ...req.body };
       if (updates.sanctionDate) updates.sanctionDate = new Date(updates.sanctionDate);
       if (updates.repaymentStartDate) updates.repaymentStartDate = new Date(updates.repaymentStartDate);
@@ -1489,93 +1524,323 @@ Reply with ONLY a JSON object, no markdown, no explanation:
     }
   );
 
+  // DELETE bank loan (President only)
+  app.delete(
+    "/api/bank-loans/:id",
+    requireAuth as any,
+    requirePresident as any,
+    async (req: AuthRequest, res) => {
+      const { id } = req.params;
+      const bankLoan = await storage.getGroupBankLoanById(id);
+      if (!bankLoan || bankLoan.groupId !== req.currentUser!.groupId)
+        return res.status(403).json({ error: "Access denied" });
+      await storage.deleteGroupBankLoan(id);
+      return res.json({ ok: true });
+    }
+  );
+
+  // PATCH close a bank loan (President only, only when all allocations are completed)
   app.patch(
     "/api/bank-loans/:id/close",
     requireAuth as any,
     requirePresident as any,
     async (req: AuthRequest, res) => {
       const { id } = req.params;
+      const bankLoan = await storage.getGroupBankLoanById(id);
+      if (!bankLoan || bankLoan.groupId !== req.currentUser!.groupId)
+        return res.status(403).json({ error: "Access denied" });
+      const allocations = await storage.getBankLoanAllocationsByLoanId(id);
+      const hasOutstanding = allocations.some(a => a.outstandingBalance > 0 || a.outstandingInterest > 0);
+      if (hasOutstanding) {
+        return res.status(400).json({ error: "Cannot close loan: some allocations still have outstanding balances." });
+      }
       const loan = await storage.updateGroupBankLoan(id, { status: "completed" });
       return res.json(loan);
     }
   );
 
+  // GET allocations for a bank loan (with authorization)
   app.get(
     "/api/bank-loans/:id/allocations",
     requireAuth as any,
     async (req: AuthRequest, res) => {
       const { id } = req.params;
-      const allocations = await storage.getBankLoanAllocationsByLoanId(id);
+      const bankLoan = await storage.getGroupBankLoanById(id);
+      if (!bankLoan || bankLoan.groupId !== req.currentUser!.groupId)
+        return res.status(403).json({ error: "Access denied" });
+      
+      let allocations = await storage.getBankLoanAllocationsByLoanId(id);
+      // Members only see their own allocation
+      if (req.currentUser!.role !== "president" && req.currentUser!.role !== "treasurer") {
+        allocations = allocations.filter(a => a.memberId === req.currentUser!.id);
+      }
       return res.json(allocations);
     }
   );
 
-  
-
-  app.get(
-    "/api/groups/:groupId/bank-loan-ledger",
-    requireAuth as any,
-    async (req: AuthRequest, res) => {
-      const { groupId } = req.params;
-      const ledgers = await storage.getGroupBankLoanLedgerByGroupId(groupId);
-      return res.json(ledgers);
-    }
-  );
-
+  // POST allocate bank loan funds to members (President only)
   app.post(
     "/api/bank-loans/:id/allocations",
     requireAuth as any,
     requirePresident as any,
     async (req: AuthRequest, res) => {
       const { id } = req.params;
-      const { allocations } = req.body; // Array of { memberId, allocatedPrincipal }
-      
-      const bankLoan = await storage.getGroupBankLoanById(id);
-      if (!bankLoan) return res.status(404).json({ error: "Bank loan not found" });
+      const { allocations } = req.body;
 
-      const existingAllocations = await storage.getBankLoanAllocationsByLoanId(id);
-      const totalAllocatedSoFar = existingAllocations.reduce((sum, a) => sum + a.allocatedPrincipal, 0);
-      
+      const bankLoan = await storage.getGroupBankLoanById(id);
+      if (!bankLoan || bankLoan.groupId !== req.currentUser!.groupId)
+        return res.status(403).json({ error: "Access denied" });
+      if (!Array.isArray(allocations) || allocations.length === 0)
+        return res.status(400).json({ error: "Allocations array required" });
+
+      // Validate total equals sanctioned amount exactly
       const newTotal = allocations.reduce((sum: number, a: any) => sum + Number(a.allocatedPrincipal), 0);
-      
-      if (totalAllocatedSoFar + newTotal > bankLoan.amount) {
-        return res.status(400).json({ error: "Total allocations exceed sanctioned bank loan amount" });
+      if (newTotal !== bankLoan.amount) {
+        return res.status(400).json({ error: `Total allocations (${newTotal}) must exactly equal sanctioned amount (${bankLoan.amount})` });
       }
+
+      const year = new Date().getFullYear();
 
       const allocsToInsert = [];
       const ledgersToInsert = [];
-      
+
       for (const a of allocations) {
-        allocsToInsert.push({
+        const alloc = {
           bankLoanId: id,
           memberId: a.memberId,
           allocatedPrincipal: Number(a.allocatedPrincipal),
-          outstandingBalance: Number(a.allocatedPrincipal)
-        });
-        
-        ledgersToInsert.push({
-          receiptNo: `DISB-BL-${id.substring(0,6)}`,
+          outstandingBalance: Number(a.allocatedPrincipal),
+        };
+        const disbReceiptSeq = await storage.getNextBankLoanReceiptSequence(year);
+        const disbReceiptNo = `BLR-${year}-${String(disbReceiptSeq).padStart(6, "0")}`;
+        const ledger = {
+          receiptNo: disbReceiptNo,
           type: "disbursement",
-          date: new Date(),
+          date: bankLoan.sanctionDate ? new Date(bankLoan.sanctionDate) : now(req),
           openingPrincipal: 0,
-          interestRateApplied: 0,
+          interestRateApplied: bankLoan.annualInterestRate,
           interestCharged: 0,
           interestPaid: 0,
           principalPaid: 0,
           paymentReceived: 0,
           closingPrincipal: Number(a.allocatedPrincipal),
           outstandingInterest: 0,
-          remarks: "Initial Disbursement",
-          recordedBy: req.currentUser!.id
-        });
+          remarks: `Initial Disbursement — ${bankLoan.bankName}`,
+          recordedBy: req.currentUser!.id,
+        };
+        allocsToInsert.push(alloc);
+        ledgersToInsert.push(ledger);
       }
 
-      await storage.allocateBankLoanFunds(allocsToInsert, ledgersToInsert as any[]);
-      
+      await storage.allocateBankLoanFunds(allocsToInsert as any, ledgersToInsert as any);
       const allAllocations = await storage.getBankLoanAllocationsByLoanId(id);
       return res.status(201).json(allAllocations);
     }
   );
+
+  // GET all allocations for a group (with member filtering)
+  app.get(
+    "/api/groups/:groupId/bank-loan-allocations",
+    requireAuth as any,
+    async (req: AuthRequest, res) => {
+      const { groupId } = req.params;
+      if (req.currentUser!.groupId !== groupId)
+        return res.status(403).json({ error: "Access denied" });
+      
+      let allocations = await storage.getBankLoanAllocationsByGroupId(groupId);
+      // Members only see their own allocations
+      if (req.currentUser!.role !== "president" && req.currentUser!.role !== "treasurer") {
+        allocations = allocations.filter(a => a.memberId === req.currentUser!.id);
+      }
+      return res.json(allocations);
+    }
+  );
+
+  // GET ledger for a specific allocation (with authorization)
+  app.get(
+    "/api/bank-loan-allocations/:allocationId/ledger",
+    requireAuth as any,
+    async (req: AuthRequest, res) => {
+      const { allocationId } = req.params;
+      const allocation = await storage.getBankLoanAllocationById(allocationId);
+      if (!allocation) return res.status(404).json({ error: "Allocation not found" });
+
+      // Verify group ownership
+      const bankLoan = await storage.getGroupBankLoanById(allocation.bankLoanId);
+      if (!bankLoan || bankLoan.groupId !== req.currentUser!.groupId)
+        return res.status(403).json({ error: "Access denied" });
+
+      // Members can only view their own
+      if (req.currentUser!.role !== "president" && req.currentUser!.role !== "treasurer" && allocation.memberId !== req.currentUser!.id)
+        return res.status(403).json({ error: "You are not authorized to view this allocation." });
+
+      const ledger = await storage.getBankLoanLedger(allocationId);
+      return res.json(ledger);
+    }
+  );
+
+  // GET repayments for a specific allocation (with authorization)
+  app.get(
+    "/api/bank-loan-allocations/:allocationId/repayments",
+    requireAuth as any,
+    async (req: AuthRequest, res) => {
+      const { allocationId } = req.params;
+      const allocation = await storage.getBankLoanAllocationById(allocationId);
+      if (!allocation) return res.status(404).json({ error: "Allocation not found" });
+
+      const bankLoan = await storage.getGroupBankLoanById(allocation.bankLoanId);
+      if (!bankLoan || bankLoan.groupId !== req.currentUser!.groupId)
+        return res.status(403).json({ error: "Access denied" });
+
+      if (req.currentUser!.role !== "president" && req.currentUser!.role !== "treasurer" && allocation.memberId !== req.currentUser!.id)
+        return res.status(403).json({ error: "You are not authorized to view this allocation." });
+
+      const repayments = await storage.getBankLoanRepaymentsByAllocationId(allocationId);
+      return res.json(repayments);
+    }
+  );
+
+  // POST record a bank loan repayment (President or Treasurer)
+  app.post(
+    "/api/bank-loan-allocations/:allocationId/repayments",
+    requireAuth as any,
+    requirePresidentOrTreasurer as any,
+    async (req: AuthRequest, res) => {
+      const { allocationId } = req.params;
+      const { amount, date, remarks } = req.body;
+
+      const allocation = await storage.getBankLoanAllocationById(allocationId);
+      if (!allocation) return res.status(404).json({ error: "Allocation not found" });
+
+      const bankLoan = await storage.getGroupBankLoanById(allocation.bankLoanId);
+      if (!bankLoan || bankLoan.groupId !== req.currentUser!.groupId)
+        return res.status(403).json({ error: "Access denied" });
+
+      const paymentAmt = Number(amount);
+      if (!paymentAmt || paymentAmt <= 0) return res.status(400).json({ error: "Valid amount required" });
+
+
+      // Generate sequential receipt number
+      const year = new Date(date || Date.now()).getFullYear();
+      const seq = await storage.getNextBankLoanReceiptSequence(year);
+      const receiptNo = generateBankLoanReceiptNo(year, seq);
+
+      // Calculate the ledger row using the accounting engine
+      const ledgerResult = applyBankLoanRepayment(
+        allocation.outstandingBalance,
+        allocation.outstandingInterest,
+        bankLoan.annualInterestRate,
+        paymentAmt
+      );
+
+      // New snapshot
+      const newOutstandingBalance = ledgerResult.closingPrincipal;
+      const newOutstandingInterest = ledgerResult.outstandingInterest;
+      const newTotalPrincipalPaid = allocation.totalPrincipalPaid + ledgerResult.principalPaid;
+      const newTotalInterestPaid = allocation.totalInterestPaid + ledgerResult.interestPaid;
+      const isCompleted = newOutstandingBalance <= 0 && newOutstandingInterest <= 0;
+
+      const repayment = await storage.recordBankLoanRepayment(
+        {
+          allocationId,
+          receiptNo,
+          amount: paymentAmt,
+          recordedBy: req.currentUser!.id,
+          remarks: remarks || null,
+        },
+        {
+          allocationId,
+          receiptNo,
+          type: "repayment",
+          date: date ? new Date(date) : now(req),
+          openingPrincipal: ledgerResult.openingPrincipal,
+          interestRateApplied: bankLoan.annualInterestRate,
+          interestCharged: ledgerResult.interestCharged,
+          interestPaid: ledgerResult.interestPaid,
+          principalPaid: ledgerResult.principalPaid,
+          paymentReceived: paymentAmt,
+          closingPrincipal: ledgerResult.closingPrincipal,
+          outstandingInterest: ledgerResult.outstandingInterest,
+          remarks: remarks || null,
+          recordedBy: req.currentUser!.id,
+        },
+        {
+          outstandingBalance: newOutstandingBalance,
+          outstandingInterest: newOutstandingInterest,
+          totalPrincipalPaid: newTotalPrincipalPaid,
+          totalInterestPaid: newTotalInterestPaid,
+          status: isCompleted ? "completed" : "active",
+        }
+      );
+
+      // Check if all allocations for this loan are completed -> auto-update loan status
+      if (isCompleted) {
+        const allAllocations = await storage.getBankLoanAllocationsByLoanId(bankLoan.id);
+        const allDone = allAllocations.every(a => a.id === allocationId ? isCompleted : (a.outstandingBalance <= 0 && a.outstandingInterest <= 0));
+        if (allDone) {
+          await storage.updateGroupBankLoan(bankLoan.id, { status: "completed" });
+        }
+      }
+
+      const updatedAllocation = await storage.getBankLoanAllocationById(allocationId);
+      return res.status(201).json({ repayment, allocation: updatedAllocation, receiptNo });
+    }
+  );
+
+  // GET bank loan summary for President (aggregated)
+  app.get(
+    "/api/bank-loans/:id/summary",
+    requireAuth as any,
+    async (req: AuthRequest, res) => {
+      const { id } = req.params;
+      const bankLoan = await storage.getGroupBankLoanById(id);
+      if (!bankLoan || bankLoan.groupId !== req.currentUser!.groupId)
+        return res.status(403).json({ error: "Access denied" });
+      // Members cannot see the master summary
+      if (req.currentUser!.role !== "president" && req.currentUser!.role !== "treasurer")
+        return res.status(403).json({ error: "President or Treasurer access required" });
+
+      const allocations = await storage.getBankLoanAllocationsByLoanId(id);
+      const totalAllocated = allocations.reduce((s, a) => s + a.allocatedPrincipal, 0);
+      const totalPrincipalCollected = allocations.reduce((s, a) => s + a.totalPrincipalPaid, 0);
+      const totalInterestCollected = allocations.reduce((s, a) => s + a.totalInterestPaid, 0);
+      const totalOutstandingPrincipal = allocations.reduce((s, a) => s + a.outstandingBalance, 0);
+      const totalOutstandingInterest = allocations.reduce((s, a) => s + a.outstandingInterest, 0);
+      const membersCompleted = allocations.filter(a => a.status === "completed").length;
+
+      return res.json({
+        bankLoan,
+        allocations,
+        summary: {
+          sanctionedAmount: bankLoan.amount,
+          totalAllocated,
+          remainingUnallocated: bankLoan.amount - totalAllocated,
+          totalPrincipalCollected,
+          totalInterestCollected,
+          totalOutstandingPrincipal,
+          totalOutstandingInterest,
+          membersAllocated: allocations.length,
+          membersCompleted,
+        }
+      });
+    }
+  );
+
+  // GET group-level bank loan ledger (President/Treasurer only)
+  app.get(
+    "/api/groups/:groupId/bank-loan-ledger",
+    requireAuth as any,
+    async (req: AuthRequest, res) => {
+      const { groupId } = req.params;
+      if (req.currentUser!.groupId !== groupId)
+        return res.status(403).json({ error: "Access denied" });
+      if (req.currentUser!.role !== "president" && req.currentUser!.role !== "treasurer")
+        return res.status(403).json({ error: "President or Treasurer access required" });
+      const ledgers = await storage.getGroupBankLoanLedgerByGroupId(groupId);
+      return res.json(ledgers);
+    }
+  );
+
 
   
   const httpServer = createServer(app);

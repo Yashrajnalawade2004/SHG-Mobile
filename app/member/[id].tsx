@@ -11,7 +11,7 @@ import * as Haptics from "expo-haptics";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useData } from "@/contexts/DataContext";
-import { generateMemberStatement } from "@/lib/pdf-generator";
+import { generateMemberPassbook } from "@/lib/pdf-generator";
 import Colors from "@/constants/colors";
 
 export default function MemberDetailScreen() {
@@ -19,7 +19,7 @@ export default function MemberDetailScreen() {
   const insets = useSafeAreaInsets();
   const { user, group, isPresident } = useAuth();
   const { t, language } = useLanguage();
-  const { payments, loans, loanRepayments, meetings, groupMembers, updateMember } = useData();
+  const { payments, loans, loanRepayments, loanLedgers, meetings, groupMembers, updateMember } = useData();
   const [generating, setGenerating] = useState(false);
   const [showMonthPicker, setShowMonthPicker] = useState(false);
 
@@ -34,7 +34,20 @@ export default function MemberDetailScreen() {
     );
   }
 
-  const canDownload = isPresident || user?.id === member.id;
+
+  const isAuthorized = isPresident || user?.role === "treasurer" || user?.id === member.id;
+  
+  if (!isAuthorized) {
+    return (
+      <View style={[styles.container, { justifyContent: "center", alignItems: "center", padding: 20 }]}>
+        <Ionicons name="lock-closed-outline" size={64} color={Colors.light.danger} />
+        <Text style={[styles.emptyText, { marginTop: 16, color: Colors.light.danger, fontSize: 18, fontWeight: 'bold', textAlign: 'center' }]}>{t("access_denied")}</Text>
+        <Text style={{ marginTop: 8, color: Colors.light.textSecondary, textAlign: 'center' }}>{t("loan_privacy_notice")}</Text>
+      </View>
+    );
+  }
+
+  const canDownload = isPresident || user?.role === "treasurer" || user?.id === member.id;
 
   const memberPayments = payments.filter((p) => p.memberId === member.id);
   const confirmedPayments = memberPayments.filter((p) => p.status === "confirmed");
@@ -57,17 +70,14 @@ export default function MemberDetailScreen() {
     if (!group) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setGenerating(true);
-    const president = groupMembers.find((m) => m.role === "president");
-    await generateMemberStatement({
-      member,
+    await generateMemberPassbook({
       group,
-      president,
+      groupMembers,
+      member,
       payments,
       loans,
       loanRepayments,
-      meetings,
-      groupMembers,
-      language,
+      loanLedger: loanLedgers,
       t,
       user,
     });
@@ -335,28 +345,14 @@ export default function MemberDetailScreen() {
                 <View style={{ flex: 1 }}>
                   <Text style={styles.historyRowDate}>{formatDisplayDate(item.date.toISOString())} - {item.title}</Text>
                   <Text style={[styles.historyRowStatus, { color: item.statusColor }]}>{item.statusLabel}</Text>
-                  {item.subtitle && <Text style={styles.historyRowMeta}>{item.subtitle}</Text>}
+                  
                 </View>
                 <View style={{ alignItems: "flex-end" }}>
                   <Text style={styles.historyRowAmount}>Rs. {item.amount}</Text>
                   {item.routeTo && <Ionicons name="chevron-forward" size={14} color={Colors.light.textMuted} />}
                 </View>
               </View>
-              {item.type === 'loan_repayment' && item.amountBreakdown && (
-                <View style={{ marginTop: 8, paddingLeft: 20 }}>
-                   <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                      <Text style={{ fontSize: 12, color: Colors.light.textSecondary }}>{t("history.principal_portion")}: Rs. {item.amountBreakdown.p}</Text>
-                      <Text style={{ fontSize: 12, color: Colors.light.textSecondary }}>{t("history.interest_portion")}: Rs. {item.amountBreakdown.i}</Text>
-                   </View>
-                   <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 4 }}>
-                      <Text style={{ fontSize: 12, color: Colors.light.textSecondary }}>{t("history.remaining_principal")}: Rs. {item.amountBreakdown.remain}</Text>
-                      {item.receiptNo && <Text style={{ fontSize: 12, color: Colors.light.textSecondary }}>{t("history.receipt_number")}: {item.receiptNo}</Text>}
-                   </View>
-                   <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 4 }}>
-                      {item.recordedBy && <Text style={{ fontSize: 12, color: Colors.light.textSecondary }}>{t("history.recorded_by")}: {item.recordedBy}</Text>}
-                   </View>
-                </View>
-              )}
+              
             </Pressable>
           ))
         )}

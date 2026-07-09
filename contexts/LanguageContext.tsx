@@ -6,6 +6,83 @@ export type Language = "en" | "mr";
 
 export const translations: Record<string, any> = {
 
+  "reports.group_reports": { "en": "SHG Reports", "mr": "गट अहवाल" },
+  "reports.time_range": { "en": "Time Range", "mr": "वेळ मर्यादा" },
+  "reports.cash_book_desc": { "en": "Running physical cash balance tracking all SHG cash movements.", "mr": "गटाच्या सर्व रोख व्यवहारांचा मागोवा ठेवणारी भौतिक रोख शिल्लक." },
+  "reports.bank_book_desc": { "en": "Running bank balance tracking all online/cheque movements.", "mr": "सर्व ऑनलाइन/चेक व्यवहारांचा मागोवा ठेवणारी बँक शिल्लक." },
+  "reports.financial_desc": { "en": "Overall financial position (Income, Expenses, Assets, Liabilities).", "mr": "एकूण आर्थिक स्थिती (उत्पन्न, खर्च, मालमत्ता, दायित्वे)." },
+  "reports.savings_desc": { "en": "Detailed list of member savings contributions and late fees.", "mr": "सदस्यांच्या बचत योगदानाची आणि विलंब शुल्काची सविस्तर यादी." },
+  "reports.internal_loan_desc": { "en": "Record of all internal SHG loans, outstanding amounts, and recovery %.", "mr": "सर्व अंतर्गत गट कर्जे, थकबाकी आणि वसुली % यांची नोंद." },
+  "reports.bank_loan_desc": { "en": "Record of external bank loans and member allocations.", "mr": "बाह्य बँक कर्जे आणि सदस्य वाटपांची नोंद." },
+  "reports.recovery_desc": { "en": "Monthly monitoring of both internal and bank loan recoveries.", "mr": "अंतर्गत आणि बँक कर्ज वसुलीवर मासिक देखरेख." },
+  "reports.member_passbook_desc": { "en": "Individual member's combined savings and loan passbooks.", "mr": "वैयक्तिक सदस्याचे एकत्रित बचत आणि कर्ज पासबुक." },
+  "reports.member_register_desc": { "en": "Master roster of all active and former members.", "mr": "सर्व सक्रिय आणि माजी सदस्यांची मुख्य यादी." },
+  "reports.meeting_register_desc": { "en": "Log of all scheduled and completed SHG meetings.", "mr": "सर्व नियोजित आणि पूर्ण झालेल्या गट बैठकांची नोंद." },
+  "reports.annual_desc": { "en": "Comprehensive year-end statistical report for auditing.", "mr": "ऑडिटिंगसाठी सर्वसमावेशक वर्षाअखेरचा सांख्यिकीय अहवाल." },
+  "reports.select_year": { "en": "Year", "mr": "वर्ष" },
+  "reports.select_month": { "en": "Month", "mr": "महिना" },
+  "reports.select_quarter": { "en": "Quarter", "mr": "तिमाही" },
+  "reports.select_half": { "en": "Half", "mr": "सहामाही" },
+  "reports.payment_method": { "en": "Payment Method", "mr": "पेमेंट पद्धत" },
+  "reports.loan_status": { "en": "Loan Status", "mr": "कर्जाची स्थिती" },
+  "reports.select_member": { "en": "Select Member", "mr": "सदस्य निवडा" },
+  "reports.all_members": { "en": "All Members", "mr": "सर्व सदस्य" },
+  "reports.monthly": { "en": "Monthly", "mr": "मासिक" },
+  "reports.quarterly": { "en": "Quarterly", "mr": "तिमाही" },
+  "reports.half_yearly": { "en": "Half-Yearly", "mr": "सहामाही" },
+  "reports.annual": { "en": "Annual", "mr": "वार्षिक" },
+  "reports.custom": { "en": "Custom", "mr": "सानुकूल" },
+  "reports.from_date": { "en": "From Date", "mr": "या तारखेपासून" },
+  "reports.to_date": { "en": "To Date", "mr": "या तारखेपर्यंत" },
+  "reports.generate_report": { "en": "Generate Report", "mr": "अहवाल तयार करा" },
+
+  // ─── NEW REPORT REDESIGN KEYS ─────────────────────────────────────────────
+  "reports.monthly_savings_report": { "en": "Monthly Savings Report", "mr": "मासिक बचत अहवाल" },
+  "reports.member_passbook": { "en": "Member Passbook", "mr": "सदस्य पासबुक" },
+  "reports.shg_financial_report": { "en": "SHG Financial Report", "mr": "गट आर्थिक अहवाल" },
+
+  "history.loan_repayment": { "en": "Loan Repayment", "mr": "कर्ज परतफेड" },
+  "history.remaining_principal": { "en": "Remaining Principal", "mr": "उर्वरित मुद्दल" },
+
+  "reports.internal_loan_register": { "en": "Internal Loan Register", "mr": "अंतर्गत कर्ज नोंदवही" },
+  "reports.group_bank_loan_register": { "en": "Group Bank Loan Register", "mr": "गट बँक कर्ज नोंदवही" },
+  "reports.loan_recovery_report": { "en": "Loan Recovery Report", "mr": "कर्ज वसुली अहवाल" },
+  "reports.member_register": { "en": "Member Register", "mr": "सदस्य नोंदवही" },
+  "reports.annual_shg_report": { "en": "Annual SHG Report", "mr": "वार्षिक गट अहवाल" },
+  "reports.meeting_register": { "en": "Meeting Register", "mr": "बैठक नोंदवही" },
+  "reports.cash_book": { "en": "Cash Book", "mr": "रोख वही" },
+  "reports.bank_book": { "en": "Bank Book", "mr": "बँक वही" },
+
+  "pdf_receipt_no": { "en": "Receipt No.", "mr": "पावती क्र." },
+  "pdf_date": { "en": "Date", "mr": "तारीख" },
+  "pdf_particulars": { "en": "Particulars", "mr": "तपशील" },
+  "pdf_debit": { "en": "Debit (In)", "mr": "नावे (जमा)" },
+  "pdf_credit": { "en": "Credit (Out)", "mr": "जमा (नावे)" },
+  "pdf_balance": { "en": "Balance", "mr": "शिल्लक" },
+  "pdf_remarks": { "en": "Remarks", "mr": "शेरा" },
+
+  "pdf_report_id": { "en": "Report ID", "mr": "अहवाल क्र." },
+  "pdf_verification": { "en": "Verification", "mr": "पडताळणी" },
+  "pdf_executive_summary": { "en": "Executive Summary", "mr": "कार्यकारी सारांश" },
+  "pdf_recovery_pct": { "en": "Recovery %", "mr": "वसुली %" },
+  "pdf_on_time": { "en": "On Time", "mr": "वेळेवर" },
+  "pdf_delayed": { "en": "Delayed", "mr": "उशीर" },
+  "pdf_overdue": { "en": "Overdue", "mr": "थकीत" },
+  "pdf_completed": { "en": "Completed", "mr": "पूर्ण" },
+  "pdf_cash_in": { "en": "Cash In", "mr": "रोख जमा" },
+  "pdf_cash_out": { "en": "Cash Out", "mr": "रोख नावे" },
+  "pdf_bank_deposit": { "en": "Bank Deposit", "mr": "बँक जमा" },
+  "pdf_bank_withdrawal": { "en": "Bank Withdrawal", "mr": "बँक काढणे" },
+  "pdf_outstanding_amount": { "en": "Outstanding Amount", "mr": "थकीत रक्कम" },
+  "pdf_active_loans": { "en": "Active Loans", "mr": "सक्रिय कर्जे" },
+  "pdf_completed_loans": { "en": "Completed Loans", "mr": "पूर्ण कर्जे" },
+  
+  "pdf_signature_president": { "en": "President", "mr": "अध्यक्ष" },
+  "pdf_signature_treasurer": { "en": "Treasurer", "mr": "खजिनदार" },
+  "pdf_signature_secretary": { "en": "Secretary", "mr": "सचिव" },
+  "pdf_footer_platform": { "en": "Generated by SHG Digital Record Platform", "mr": "SHG डिजिटल रेकॉर्ड प्लॅटफॉर्म द्वारे व्युत्पन्न" },
+
+
 
 
   "qr_modal_title": { "en": "Pay via QR", "mr": "QR द्वारे भरा" },
@@ -62,6 +139,123 @@ export const translations: Record<string, any> = {
   "current_month_summary": { "en": "Current Month Summary", "mr": "चालू महिन्याचा सारांश" },
   "pay_via_qr": { "en": "Pay via QR", "mr": "QR द्वारे भरा" },
   "total_amount_to_pay": { "en": "Total Amount to Pay", "mr": "भरण्याची एकूण रक्कम" },
+
+
+  // ─── GROUP BANK LOAN MODULE — Complete Translations ─────────────────────────
+  "bank_loan.title": { "en": "Group Bank Loan", "mr": "गट बँक कर्ज" },
+  "bank_loan.create": { "en": "Create Bank Loan", "mr": "बँक कर्ज तयार करा" },
+  "bank_loan.save_and_allocate": { "en": "Save & Allocate Funds", "mr": "जतन करा व निधी वाटप करा" },
+  "bank_loan.bank_information": { "en": "Bank Information", "mr": "बँकेची माहिती" },
+  "bank_loan.loan_details": { "en": "Loan Details", "mr": "कर्जाचा तपशील" },
+  "bank_loan.ifsc": { "en": "IFSC Code", "mr": "IFSC कोड" },
+  "bank_loan.repayment_start": { "en": "Repayment Start Date", "mr": "परतफेड प्रारंभ तारीख" },
+  "bank_loan.per_annum": { "en": "p.a.", "mr": "वार्षिक" },
+  "bank_loan.monthly_rate": { "en": "Monthly Rate", "mr": "मासिक दर" },
+  "bank_loan.per_month": { "en": "per month", "mr": "प्रति महिना" },
+  "bank_loan.estimated_emi": { "en": "Estimated Monthly EMI", "mr": "अंदाजे मासिक EMI" },
+  "bank_loan.months": { "en": "months", "mr": "महिने" },
+  "bank_loan.remarks": { "en": "Remarks", "mr": "शेरा" },
+  "bank_loan.remarks_optional": { "en": "Optional remarks", "mr": "ऐच्छिक शेरा" },
+
+  "bank_loan.allocate_funds": { "en": "Allocate to Members", "mr": "सदस्यांना वाटप करा" },
+  "bank_loan.confirm_allocation": { "en": "Confirm Allocation", "mr": "वाटप मंजूर करा" },
+  "bank_loan.equal_distribution": { "en": "Equal Distribution", "mr": "समान वाटप" },
+  "bank_loan.custom_distribution": { "en": "Custom Distribution", "mr": "सानुकूल वाटप" },
+  "bank_loan.per_member": { "en": "Per member", "mr": "प्रति सदस्य" },
+  "bank_loan.members_selected": { "en": "Members Selected", "mr": "निवडलेले सदस्य" },
+  "bank_loan.sanctioned": { "en": "Sanctioned Amount", "mr": "मंजूर रक्कम" },
+  "bank_loan.allocated_amount": { "en": "Allocated Amount", "mr": "वाटप केलेली रक्कम" },
+  "bank_loan.remaining_to_allocate": { "en": "Remaining to Allocate", "mr": "वाटपासाठी उर्वरित" },
+  "bank_loan.warn_active_alloc": { "en": "Has active allocation", "mr": "सक्रिय वाटप आहे" },
+
+  "bank_loan.summary": { "en": "Bank Loan Summary", "mr": "बँक कर्ज सारांश" },
+  "bank_loan.account_summary": { "en": "Account Summary", "mr": "खाते सारांश" },
+  "bank_loan.master_summary": { "en": "Master Summary", "mr": "मुख्य सारांश" },
+  "bank_loan.total_allocated": { "en": "Total Allocated", "mr": "एकूण वाटप" },
+  "bank_loan.unallocated": { "en": "Unallocated", "mr": "वाटप न केलेले" },
+  "bank_loan.allocated_principal": { "en": "Allocated Principal", "mr": "वाटप केलेले मुद्दल" },
+  "bank_loan.principal_collected": { "en": "Principal Collected", "mr": "मुद्दल वसूल" },
+  "bank_loan.interest_collected": { "en": "Interest Collected", "mr": "व्याज वसूल" },
+  "bank_loan.outstanding": { "en": "Outstanding", "mr": "थकीत" },
+  "bank_loan.total_outstanding": { "en": "Total Outstanding", "mr": "एकूण थकीत" },
+  "bank_loan.outstanding_principal": { "en": "Outstanding Principal", "mr": "थकीत मुद्दल" },
+  "bank_loan.outstanding_interest": { "en": "Outstanding Interest", "mr": "थकीत व्याज" },
+  "bank_loan.principal_paid": { "en": "Principal Paid", "mr": "भरलेले मुद्दल" },
+  "bank_loan.interest_paid": { "en": "Interest Paid", "mr": "भरलेले व्याज" },
+  "bank_loan.members_allocated": { "en": "Members Allocated", "mr": "वाटप केलेले सदस्य" },
+  "bank_loan.members_completed": { "en": "Members Completed", "mr": "पूर्ण केलेले सदस्य" },
+  "bank_loan.active_loans": { "en": "Active Bank Loans", "mr": "सक्रिय बँक कर्जे" },
+  "bank_loan.no_loans": { "en": "No bank loans yet", "mr": "अद्याप बँक कर्ज नाहीत" },
+  "bank_loan.no_allocations": { "en": "No bank loan allocations found", "mr": "बँक कर्ज वाटप आढळले नाही" },
+  "bank_loan.not_found": { "en": "Bank loan not found", "mr": "बँक कर्ज आढळले नाही" },
+  "bank_loan.collected": { "en": "Collected", "mr": "वसूल" },
+
+  "bank_loan.member_allocations": { "en": "Member Allocations", "mr": "सदस्यांचे वाटप" },
+  "bank_loan.remaining_months": { "en": "Remaining Months", "mr": "उर्वरित महिने" },
+  "bank_loan.this_month": { "en": "This month", "mr": "या महिन्यात" },
+  "bank_loan.repaid": { "en": "repaid", "mr": "परतफेड झाली" },
+  "bank_loan.view_passbook": { "en": "View Passbook", "mr": "पासबुक पहा" },
+  "bank_loan.passbook": { "en": "Bank Loan Passbook", "mr": "बँक कर्ज पासबुक" },
+  "bank_loan.mark_completed": { "en": "Mark Loan as Completed", "mr": "कर्ज पूर्ण म्हणून चिन्हांकित करा" },
+  "bank_loan.confirm_close": { "en": "Are you sure you want to close this bank loan? This cannot be undone.", "mr": "तुम्हाला खात्री आहे का की तुम्ही हे बँक कर्ज बंद करायचे आहे? हे परत केले जाऊ शकत नाही." },
+
+  "bank_loan.recommended_payment": { "en": "Recommended Monthly Payment", "mr": "शिफारस केलेला मासिक हप्ता" },
+  "bank_loan.principal_portion": { "en": "Principal Portion", "mr": "मुद्दलाचा भाग" },
+  "bank_loan.interest_portion": { "en": "Interest Portion", "mr": "व्याजाचा भाग" },
+
+  "bank_loan.record_repayment": { "en": "Record Repayment", "mr": "परतफेड नोंदवा" },
+  "bank_loan.save_repayment": { "en": "Save Repayment", "mr": "परतफेड जतन करा" },
+  "bank_loan.payment_amount": { "en": "Payment Amount", "mr": "भरणा रक्कम" },
+  "bank_loan.payment_date": { "en": "Payment Date", "mr": "भरणा तारीख" },
+  "bank_loan.no_transactions": { "en": "No transactions yet", "mr": "अद्याप कोणतेही व्यवहार नाहीत" },
+  "bank_loan.receipt_no": { "en": "Receipt No.", "mr": "पावती क्र." },
+  "bank_loan.disbursement": { "en": "Disbursement", "mr": "वितरण" },
+  "bank_loan.repayment": { "en": "Repayment", "mr": "परतफेड" },
+  "bank_loan.total": { "en": "Total", "mr": "एकूण" },
+
+  "bank_loan.date": { "en": "Date", "mr": "तारीख" },
+  "bank_loan.particulars": { "en": "Particulars", "mr": "तपशील" },
+  "bank_loan.opening_principal": { "en": "Opening", "mr": "सुरुवात" },
+  "bank_loan.interest_charged": { "en": "Interest", "mr": "व्याज" },
+  "bank_loan.col_principal": { "en": "Principal", "mr": "मुद्दल" },
+  "bank_loan.total_payment": { "en": "Payment", "mr": "भरणा" },
+  "bank_loan.closing_principal": { "en": "Closing", "mr": "बंद" },
+  "bank_loan.account_holder": { "en": "Account Holder", "mr": "खाते धारक" },
+  "bank_loan.detail": { "en": "Detail", "mr": "तपशील" },
+  "bank_loan.amount": { "en": "Amount", "mr": "रक्कम" },
+
+  "bank_loan.qr_notice": { "en": "Scan to pay. Repayment will be officially recorded by the President or Treasurer after verification.", "mr": "पेमेंटसाठी स्कॅन करा. सत्यापनानंतर अध्यक्ष किंवा खजिनदारांद्वारे परतफेड अधिकृतपणे नोंदवली जाईल." },
+  "bank_loan.unauthorized": { "en": "You are not authorized to view this allocation.", "mr": "तुम्हाला हे वाटप पाहण्याचा अधिकार नाही." },
+  "access_denied": { "en": "Access Denied", "mr": "प्रवेश नाकारला" },
+  "loan_privacy_notice": { "en": "You do not have permission to view this member's history or loans. Only the President, Treasurer, or the member themselves can view this page.", "mr": "तुम्हाला या सदस्याचा इतिहास किंवा कर्जे पाहण्याची परवानगी नाही. फक्त अध्यक्ष, खजिनदार किंवा सदस्य स्वतः हे पृष्ठ पाहू शकतात." },
+
+  "bank_loan.dashboard_title": { "en": "Group Bank Loan", "mr": "गट बँक कर्ज" },
+  "bank_loan.dashboard_subtitle_admin": { "en": "Outstanding across all bank loans", "mr": "सर्व बँक कर्जांवरील थकबाकी" },
+  "bank_loan.dashboard_subtitle_member": { "en": "Your bank loan allocation", "mr": "तुमचे बँक कर्ज वाटप" },
+  "bank_loan.view_details": { "en": "View Details", "mr": "तपशील पहा" },
+  "bank_loan.no_active_alloc": { "en": "No active bank loan allocation", "mr": "कोणतेही सक्रिय बँक कर्ज वाटप नाही" },
+
+  "bank_loan.group_statement": { "en": "Group Bank Loan Statement", "mr": "गट बँक कर्ज विवरण" },
+  "bank_loan.sanction_date": { "en": "Sanction Date", "mr": "मंजुरीची तारीख" },
+  "bank_loan.account_no": { "en": "A/C No.", "mr": "खाता क्र." },
+  "bank_loan.recovery_report": { "en": "Recovery Report", "mr": "वसुली अहवाल" },
+  "bank_loan.member_name": { "en": "Member Name", "mr": "सदस्याचे नाव" },
+  "bank_loan.recovery_pct": { "en": "Recovery %", "mr": "वसुली %" },
+  "bank_loan.status": { "en": "Status", "mr": "स्थिती" },
+  "bank_loan.generated_on": { "en": "Generated On", "mr": "तयार केली तारीख" },
+
+  "bank_loan.error_bank_name_required": { "en": "Bank name is required.", "mr": "बँकेचे नाव आवश्यक आहे." },
+  "bank_loan.error_amount_required": { "en": "Sanction amount is required.", "mr": "मंजूर रक्कम आवश्यक आहे." },
+  "bank_loan.error_rate_required": { "en": "Annual interest rate is required.", "mr": "वार्षिक व्याजदर आवश्यक आहे." },
+  "bank_loan.error_duration_required": { "en": "Duration is required.", "mr": "कालावधी आवश्यक आहे." },
+  "bank_loan.error_date_required": { "en": "Sanction date is required.", "mr": "मंजुरीची तारीख आवश्यक आहे." },
+  "bank_loan.error_invalid_amount": { "en": "Please enter a valid payment amount.", "mr": "कृपया वैध भरणा रक्कम प्रविष्ट करा." },
+  "bank_loan.error_exceeds_sanction": { "en": "Total allocations exceed the sanctioned amount.", "mr": "एकूण वाटप मंजूर रकमेपेक्षा जास्त आहे." },
+  "bank_loan.error_not_fully_allocated": { "en": "Total allocations must exactly equal the sanctioned amount.", "mr": "एकूण वाटप मंजूर रकमेशी बरोबर असणे आवश्यक आहे." },
+  "bank_loan.error_select_members": { "en": "Please select at least one member.", "mr": "कृपया किमान एक सदस्य निवडा." },
+  "bank_loan.delete": { "en": "Delete", "mr": "हटवा" },
+  "bank_loan.delete_title": { "en": "Delete Bank Loan", "mr": "बँक कर्ज हटवा" },
+  "bank_loan.delete_message": { "en": "Are you sure you want to delete this bank loan? All allocations and repayments associated with it will also be permanently deleted.", "mr": "तुम्हाला खात्री आहे की तुम्हाला हे बँक कर्ज हटवायचे आहे? याशी संबंधित सर्व वाटप आणि परतफेडी देखील कायमस्वरूपी हटवल्या जातील." },
 
   "common": {
     "pdf_status_completed": { "en": "Completed", "mr": "पूर्ण झाले" },
@@ -1913,7 +2107,6 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
       }
 
       if (found && result && typeof result === 'object' && result[language]) {
-        console.log({ key: originalKey, language: initialLanguage, resolvedValue: result[language], resolutionType: 'nested_exact_match' });
         return result[language];
       }
 
@@ -1921,17 +2114,14 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
       const fullKey = key.toLowerCase();
       const flatResult = flattenedTranslations[lastKey] || flattenedTranslations[fullKey];
       if (flatResult && flatResult[language]) {
-        console.log({ key: originalKey, language: initialLanguage, resolvedValue: flatResult[language], resolutionType: 'flattened_fallback' });
         return flatResult[language];
       }
 
       if (key.includes('_')) {
         const formatted = key.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
-        console.log({ key: originalKey, language: initialLanguage, resolvedValue: formatted, resolutionType: 'formatter_fallback' });
         return formatted;
       }
 
-      console.log({ key: originalKey, language: initialLanguage, resolvedValue: undefined, resolutionType: 'unresolved_fallback_to_key' });
       return key;
     },
     [language, flattenedTranslations]

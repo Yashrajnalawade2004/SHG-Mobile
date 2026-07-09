@@ -23,13 +23,15 @@ export default function RegisterScreen() {
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [village, setVillage] = useState("");
   const [taluka, setTaluka] = useState("");
   const [district, setDistrict] = useState("");
 
   const [uniqueGroupCode, setUniqueGroupCode] = useState("");
-  const [exitDate, setExitDate] = useState("");
-  const [loading, setLoading] = useState(false);
+    const [loading, setLoading] = useState(false);
 
   const handleRegister = async () => {
     if (!name.trim() || !phone.trim() || !password.trim() || !village.trim()) {
@@ -48,7 +50,17 @@ export default function RegisterScreen() {
       return;
     }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    
+    if (!password || !confirmPassword) {
+      Alert.alert(t("error"), t("all_fields_required"));
+      return;
+    }
+    if (password !== confirmPassword) {
+      Alert.alert(t("error"), t("passwordsDoNotMatch"));
+      return;
+    }
     setLoading(true);
+
 
     const baseData = {
       name: name.trim(),
@@ -58,7 +70,7 @@ export default function RegisterScreen() {
       taluka: taluka.trim(),
       district: district.trim(),
       joinDate: new Date().toISOString().split("T")[0],
-      exitDate: exitDate.trim() || undefined,
+      
     };
 
     let result;
@@ -77,7 +89,7 @@ export default function RegisterScreen() {
     }
   };
 
-  const InputField = ({ icon, placeholder, value, onChangeText, keyboardType, secure, maxLength }: any) => (
+  const InputField = ({ icon, placeholder, value, onChangeText, keyboardType, secure, maxLength, rightIcon, onRightIconPress }: any) => (
     <View style={styles.inputContainer}>
       <Ionicons name={icon} size={20} color={Colors.light.textSecondary} style={styles.inputIcon} />
       <TextInput
@@ -91,6 +103,11 @@ export default function RegisterScreen() {
         autoCapitalize={secure ? "none" : "words"}
         maxLength={maxLength}
       />
+      {rightIcon && (
+        <Pressable onPress={onRightIconPress} style={{ padding: 4 }}>
+          <Ionicons name={rightIcon} size={20} color={Colors.light.textSecondary} />
+        </Pressable>
+      )}
     </View>
   );
 
@@ -140,7 +157,24 @@ export default function RegisterScreen() {
         <View style={styles.form}>
           <InputField icon="person-outline" placeholder={t("name")} value={name} onChangeText={setName} />
           <InputField icon="call-outline" placeholder={t("phone")} value={phone} onChangeText={(text: string) => setPhone(text.replace(/\D/g, "").slice(0, 10))} keyboardType="number-pad" maxLength={10} />
-          <InputField icon="lock-closed-outline" placeholder={t("password")} value={password} onChangeText={setPassword} secure />
+          <InputField 
+            icon="lock-closed-outline" 
+            placeholder={t("password")} 
+            value={password} 
+            onChangeText={setPassword} 
+            secure={!showPassword} 
+            rightIcon={showPassword ? "eye-off-outline" : "eye-outline"} 
+            onRightIconPress={() => setShowPassword(!showPassword)} 
+          />
+          <InputField 
+            icon="lock-closed-outline" 
+            placeholder={t("confirmPassword")} 
+            value={confirmPassword} 
+            onChangeText={setConfirmPassword} 
+            secure={!showConfirmPassword} 
+            rightIcon={showConfirmPassword ? "eye-off-outline" : "eye-outline"} 
+            onRightIconPress={() => setShowConfirmPassword(!showConfirmPassword)} 
+          />
           <InputField icon="location-outline" placeholder={t("village")} value={village} onChangeText={setVillage} />
           {role === "president" && (
             <>
@@ -151,12 +185,7 @@ export default function RegisterScreen() {
 
           <InputField icon="key-outline" placeholder={t("auto.group_code_e_g_shg")} value={uniqueGroupCode} onChangeText={setUniqueGroupCode} autoCapitalize="characters" />
 
-          <InputField
-            icon="calendar-outline"
-            placeholder={t("exitDate") + " (YYYY-MM-DD)"}
-            value={exitDate}
-            onChangeText={setExitDate}
-          />
+          
 
           <Pressable
             style={({ pressed }) => [styles.registerBtn, { opacity: pressed ? 0.85 : 1 }]}

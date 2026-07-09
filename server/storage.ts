@@ -1,8 +1,9 @@
 // @ts-nocheck
 import { randomUUID } from "crypto";
-import { eq, inArray, and } from "drizzle-orm";
+import { eq, inArray, and, desc } from "drizzle-orm";
 import { getDb } from "./db";
 import * as schema from "../shared/schema";
+import { calculateNextLedgerEntry } from "../shared/accounting";
 
 export type UserRole = "president" | "treasurer" | "member";
 
@@ -149,6 +150,65 @@ export interface AffiliatedBank {
   createdAt: string;
 }
 
+export interface GroupBankLoan {
+  id: string;
+  groupId: string;
+  bankName: string;
+  branch?: string;
+  accountNumber?: string;
+  ifscCode?: string;
+  sanctionDate: string;
+  repaymentStartDate?: string;
+  amount: number;
+  annualInterestRate: number;
+  durationMonths: number;
+  remarks?: string;
+  status: string;
+  createdBy: string;
+  createdAt: string;
+}
+
+export interface BankLoanAllocation {
+  id: string;
+  bankLoanId: string;
+  memberId: string;
+  allocatedPrincipal: number;
+  totalPrincipalPaid: number;
+  totalInterestPaid: number;
+  outstandingBalance: number;
+  outstandingInterest: number;
+  status: string;
+}
+
+export interface BankLoanRepayment {
+  id: string;
+  allocationId: string;
+  receiptNo: string;
+  amount: number;
+  date: string;
+  recordedBy: string;
+  remarks?: string;
+}
+
+export interface BankLoanLedgerEntry {
+  id: string;
+  allocationId: string;
+  receiptNo: string;
+  type: string;
+  date: string;
+  openingPrincipal: number;
+  interestRateApplied: number;
+  interestCharged: number;
+  interestPaid: number;
+  principalPaid: number;
+  paymentReceived: number;
+  closingPrincipal: number;
+  outstandingInterest: number;
+  remarks?: string;
+  recordedBy: string;
+  createdAt: string;
+}
+
 export interface DurationRule {
   maxAmount: number;
   minDuration: number;
@@ -230,10 +290,10 @@ export interface IStorage {
   getRepaymentById(id: string): Promise<LoanRepayment | undefined>;
   createRepayment(repayment: Omit<LoanRepayment, "id">): Promise<LoanRepayment>;
   recordLoanRepayment(
-    repayment: Omit<LoanRepayment, "id">,
-    ledger: Omit<schema.LoanLedgerEntry, "id">,
-    loanUpdate: Partial<Loan>
-  ): Promise<LoanRepayment>;
+    loanId: string,
+    repaymentData: Omit<LoanRepayment, "id" | "loanId">,
+    unpaidInterestPolicy: 'due' | 'capitalize'
+  ): Promise<{ repayment: LoanRepayment, ledger: schema.LoanLedgerEntry, loan: Loan }>;
   deleteRepayment(id: string): Promise<void>;
 
   getGroupSettings(groupId: string): Promise<GroupSettings>;
@@ -258,6 +318,31 @@ export interface IStorage {
   getInvitationCodesByGroup(groupId: string): Promise<schema.InvitationCode[]>;
   createInvitationCode(data: Omit<schema.InvitationCode, "id" | "createdAt" | "currentUses">): Promise<schema.InvitationCode>;
   incrementInvitationCodeUsage(codeId: string, userId: string): Promise<void>;
+
+  // Group Bank Loan Module
+  getGroupBankLoansByGroupId(groupId: string): Promise<GroupBankLoan[]>;
+  getGroupBankLoanById(id: string): Promise<GroupBankLoan | undefined>;
+  createGroupBankLoan(loan: Omit<GroupBankLoan, "id" | "createdAt">): Promise<GroupBankLoan>;
+  updateGroupBankLoan(id: string, data: Partial<GroupBankLoan>): Promise<GroupBankLoan | undefined>;
+  deleteGroupBankLoan(id: string): Promise<void>;
+  getBankLoanAllocationsByLoanId(bankLoanId: string): Promise<BankLoanAllocation[]>;
+  getBankLoanAllocationById(id: string): Promise<BankLoanAllocation | undefined>;
+  getBankLoanAllocationsByGroupId(groupId: string): Promise<BankLoanAllocation[]>;
+  getBankLoanAllocationsByMemberId(memberId: string): Promise<BankLoanAllocation[]>;
+  updateBankLoanAllocation(id: string, data: Partial<BankLoanAllocation>): Promise<BankLoanAllocation | undefined>;
+  allocateBankLoanFunds(
+    allocations: Omit<BankLoanAllocation, "id" | "totalPrincipalPaid" | "totalInterestPaid" | "outstandingInterest" | "status">[],
+    ledgers: Omit<BankLoanLedgerEntry, "id" | "createdAt">[]
+  ): Promise<void>;
+  getBankLoanLedger(allocationId: string): Promise<BankLoanLedgerEntry[]>;
+  getGroupBankLoanLedgerByGroupId(groupId: string): Promise<BankLoanLedgerEntry[]>;
+  getBankLoanRepaymentsByAllocationId(allocationId: string): Promise<BankLoanRepayment[]>;
+  getNextBankLoanReceiptSequence(year: number): Promise<number>;
+  recordBankLoanRepayment(
+    repayment: Omit<BankLoanRepayment, "id" | "date">,
+    ledgerEntry: Omit<BankLoanLedgerEntry, "id" | "createdAt">,
+    snapshotUpdate: { outstandingBalance: number; outstandingInterest: number; totalPrincipalPaid: number; totalInterestPaid: number; status?: string }
+  ): Promise<BankLoanRepayment>;
 }
 
 export class MemStorage implements IStorage {
@@ -457,13 +542,14 @@ export class MemStorage implements IStorage {
   }
 
   async recordLoanRepayment(
-    repaymentData: Omit<LoanRepayment, "id">,
-    ledgerData: Omit<schema.LoanLedgerEntry, "id">,
-    loanUpdate: Partial<Loan>
-  ): Promise<LoanRepayment> {
-    const rep = await this.createRepayment(repaymentData);
-    await this.updateLoan(repaymentData.loanId, loanUpdate);
-    return rep;
+    loanId: string,
+    repaymentData: Omit<LoanRepayment, "id" | "loanId">,
+    unpaidInterestPolicy: 'due' | 'capitalize'
+  ): Promise<{ repayment: LoanRepayment, ledger: schema.LoanLedgerEntry, loan: Loan }> {
+    // MemStorage implementation (mock/legacy)
+    const rep = await this.createRepayment({ ...repaymentData, loanId });
+    const loan = await this.getLoanById(loanId);
+    return { repayment: rep, ledger: {} as any, loan: loan! };
   }
 
   async createRepayment(data: Omit<LoanRepayment, "id">): Promise<LoanRepayment> {
@@ -728,33 +814,107 @@ export class DatabaseStorage implements IStorage {
   }
 
   async recordLoanRepayment(
-    repaymentData: Omit<LoanRepayment, "id">,
-    ledgerData: Omit<schema.LoanLedgerEntry, "id">,
-    loanUpdate: Partial<Loan>
-  ): Promise<LoanRepayment> {
+    loanId: string,
+    repaymentData: Omit<LoanRepayment, "id" | "loanId">,
+    unpaidInterestPolicy: 'due' | 'capitalize'
+  ): Promise<{ repayment: LoanRepayment, ledger: schema.LoanLedgerEntry, loan: Loan }> {
     const repId = randomUUID();
     const ledgerId = randomUUID();
+    let finalRepayment: any;
+    let finalLedger: any;
+    let finalLoan: any;
     
     await this.db.transaction(async (tx) => {
-      // Insert repayment
+      // 1. Lock loan / latest ledger (FOR UPDATE)
+      const loanArr = await tx.select().from(schema.loans).where(eq(schema.loans.id, loanId)).for("update");
+      const currentLoan = loanArr[0];
+      if (!currentLoan) throw new Error("Loan not found");
+
+      // 2. Read latest ledger entry
+      const ledgerArr = await tx.select().from(schema.loanLedger)
+        .where(eq(schema.loanLedger.loanId, loanId))
+        .orderBy(desc(schema.loanLedger.date), desc(schema.loanLedger.createdAt))
+        .limit(1)
+        .for("update");
+      
+      const lastLedger = ledgerArr[0];
+      const openingBalance = lastLedger ? lastLedger.closingPrincipal : currentLoan.amount;
+      const outstandingInt = lastLedger ? lastLedger.outstandingInterest : 0;
+      
+      const shgAmount = repaymentData.shgAmount;
+      const fixedInstallment = currentLoan.fixedPrincipalInstallment;
+
+      // 3. Calculate new repayment
+      const ledgerCalc = calculateNextLedgerEntry(
+        { remainingBalance: openingBalance, outstandingInterest: outstandingInt },
+        shgAmount,
+        currentLoan.interest,
+        fixedInstallment,
+        unpaidInterestPolicy
+      );
+
+      // Verify integrity
+      if (Math.abs(openingBalance - ledgerCalc.principalPaid - ledgerCalc.closingPrincipal) > 0.01) {
+        throw new Error("Integrity Check Failed: Opening - PrincipalPaid != Closing");
+      }
+
+      // 4. Insert repayment record
       const dbRepayment = {
         ...repaymentData,
+        loanId,
         date: new Date(repaymentData.date),
         id: repId
       };
       await tx.insert(schema.loanRepayments).values(dbRepayment);
       
-      // Insert ledger entry
-      await tx.insert(schema.loanLedger).values({ ...ledgerData, id: ledgerId });
+      // 5. Insert new immutable ledger entry
+      const ledgerEntry = {
+        id: ledgerId,
+        loanId,
+        receiptNo: `REP-${loanId.substring(0, 8).toUpperCase()}-${Date.now().toString().slice(-4)}`,
+        openingPrincipal: ledgerCalc.openingPrincipal,
+        interestRateApplied: currentLoan.interest,
+        interestCharged: ledgerCalc.interestCharged,
+        interestPaid: ledgerCalc.interestPaid,
+        principalPaid: ledgerCalc.principalPaid,
+        paymentReceived: ledgerCalc.paymentReceived,
+        closingPrincipal: ledgerCalc.closingPrincipal,
+        outstandingInterest: ledgerCalc.outstandingInterest,
+        date: new Date(repaymentData.date),
+        type: "repayment",
+        recordedBy: repaymentData.recordedBy,
+        remarks: repaymentData.remarks
+      };
+      await tx.insert(schema.loanLedger).values(ledgerEntry);
       
-      // Update loan
+      // 6 & 7. Derive the new snapshot values and update loans snapshot
+      const totalPrincipalPaid = currentLoan.totalPrincipalPaid + ledgerCalc.principalPaid;
+      const totalInterestPaid = currentLoan.totalInterestPaid + ledgerCalc.interestPaid;
+      const status = ledgerCalc.closingPrincipal <= 0 ? "completed" : currentLoan.status;
+
       await tx.update(schema.loans)
-        .set(loanUpdate)
-        .where(eq(schema.loans.id, repaymentData.loanId));
+        .set({
+          remainingBalance: ledgerCalc.closingPrincipal,
+          outstandingInterest: ledgerCalc.outstandingInterest,
+          totalPrincipalPaid,
+          totalInterestPaid,
+          status
+        })
+        .where(eq(schema.loans.id, loanId));
+
+      finalRepayment = dbRepayment;
+      finalLedger = ledgerEntry;
+      finalLoan = {
+        ...currentLoan,
+        remainingBalance: ledgerCalc.closingPrincipal,
+        outstandingInterest: ledgerCalc.outstandingInterest,
+        totalPrincipalPaid,
+        totalInterestPaid,
+        status
+      };
     });
 
-    const rows = await this.db.select().from(schema.loanRepayments).where(eq(schema.loanRepayments.id, repId));
-    return rows[0] as unknown as LoanRepayment;
+    return { repayment: finalRepayment, ledger: finalLedger, loan: finalLoan };
   }
 
   async createRepayment(data: Omit<LoanRepayment, "id">): Promise<LoanRepayment> {
@@ -915,6 +1075,16 @@ export class DatabaseStorage implements IStorage {
     await this.db.update(schema.groupBankLoans).set(data).where(eq(schema.groupBankLoans.id, id));
     return this.getGroupBankLoanById(id);
   }
+
+  async deleteGroupBankLoan(id: string): Promise<void> {
+    const allocations = await this.getBankLoanAllocationsByLoanId(id);
+    for (const alloc of allocations) {
+      await this.db.delete(schema.bankLoanRepayments).where(eq(schema.bankLoanRepayments.allocationId, alloc.id));
+      await this.db.delete(schema.bankLoanLedger).where(eq(schema.bankLoanLedger.allocationId, alloc.id));
+    }
+    await this.db.delete(schema.bankLoanAllocations).where(eq(schema.bankLoanAllocations.bankLoanId, id));
+    await this.db.delete(schema.groupBankLoans).where(eq(schema.groupBankLoans.id, id));
+  }
   
   async getBankLoanAllocationsByLoanId(bankLoanId: string): Promise<BankLoanAllocation[]> {
     return await this.db.select().from(schema.bankLoanAllocations).where(eq(schema.bankLoanAllocations.bankLoanId, bankLoanId));
@@ -981,9 +1151,10 @@ export class DatabaseStorage implements IStorage {
   async recordBankLoanRepayment(
     repayment: Omit<BankLoanRepayment, "id" | "date">,
     ledgerEntry: Omit<BankLoanLedgerEntry, "id" | "createdAt">,
-    snapshotUpdate: { outstandingBalance: number; outstandingInterest: number; totalPrincipalPaid: number; totalInterestPaid: number }
+    snapshotUpdate: { outstandingBalance: number; outstandingInterest: number; totalPrincipalPaid: number; totalInterestPaid: number; status?: string }
   ): Promise<BankLoanRepayment> {
     let repId = "";
+    console.log('REPAYMENT DATE:', repayment.date);
     await this.db.transaction(async (tx) => {
       repId = randomUUID();
 // @ts-expect-error
@@ -1002,6 +1173,37 @@ export class DatabaseStorage implements IStorage {
     const rows = await this.db.select().from(schema.bankLoanRepayments).where(eq(schema.bankLoanRepayments.id, repId));
     return rows[0];
   }
+
+  async getBankLoanAllocationsByMemberId(memberId: string): Promise<BankLoanAllocation[]> {
+    return await this.db.select().from(schema.bankLoanAllocations).where(eq(schema.bankLoanAllocations.memberId, memberId));
+  }
+
+  async updateBankLoanAllocation(id: string, data: Partial<BankLoanAllocation>): Promise<BankLoanAllocation | undefined> {
+// @ts-expect-error
+    await this.db.update(schema.bankLoanAllocations).set(data).where(eq(schema.bankLoanAllocations.id, id));
+    return this.getBankLoanAllocationById(id);
+  }
+
+  async getBankLoanRepaymentsByAllocationId(allocationId: string): Promise<BankLoanRepayment[]> {
+    return await this.db.select().from(schema.bankLoanRepayments).where(eq(schema.bankLoanRepayments.allocationId, allocationId));
+  }
+
+  async getNextBankLoanReceiptSequence(year: number): Promise<number> {
+    const jobName = `bank_loan_receipt_seq_${year}`;
+    // Use cronLocks table as a simple sequence: store the current count in lockedAt
+    const rows = await this.db.select().from(schema.cronLocks).where(eq(schema.cronLocks.jobName, jobName));
+    if (rows.length === 0) {
+      await this.db.insert(schema.cronLocks).values({ jobName, lockedAt: new Date() });
+      return 1;
+    }
+    // Use a counter stored as an extra field — we'll encode it in the timestamp milliseconds
+    // Actually just use count of bank loan repayments for the year as the sequence
+    const allReps = await this.db.select().from(schema.bankLoanRepayments);
+    const yearStr = String(year);
+    const count = allReps.filter(r => r.receiptNo.includes(`BLR-${yearStr}-`)).length;
+    return count + 1;
+  }
+
 }
 
 export const storage: IStorage = (process.env.SUPABASE_DATABASE_URL ?? process.env.DATABASE_URL)

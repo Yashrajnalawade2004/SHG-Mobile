@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useMemo, ReactNode, useCallback, useEffect } from "react";
 import { useAuth } from "./AuthContext";
+import { getDeviceTimestamp } from '@/lib/time';
 import { apiGet, apiPost, apiPatch, apiPut, apiDelete } from "@/lib/api";
 import { resolveRepaymentAmounts, calculateShgTotal } from "../shared/accounting";
 
@@ -162,6 +163,35 @@ export interface BankLoanAllocation {
   status: string;
 }
 
+export interface BankLoanRepayment {
+  id: string;
+  allocationId: string;
+  receiptNo: string;
+  amount: number;
+  date: string;
+  recordedBy: string;
+  remarks?: string;
+}
+
+export interface BankLoanLedgerEntry {
+  id: string;
+  allocationId: string;
+  receiptNo: string;
+  type: string;
+  date: string;
+  openingPrincipal: number;
+  interestRateApplied: number;
+  interestCharged: number;
+  interestPaid: number;
+  principalPaid: number;
+  paymentReceived: number;
+  closingPrincipal: number;
+  outstandingInterest: number;
+  remarks?: string;
+  recordedBy: string;
+  createdAt: string;
+}
+
 export interface DurationRule {
   maxAmount: number;
   minDuration: number;
@@ -265,9 +295,14 @@ interface DataContextValue {
   createBank: (data: Omit<AffiliatedBank, "id" | "createdAt" | "createdBy" | "isActive">) => Promise<AffiliatedBank>;
   updateBank: (id: string, data: Partial<AffiliatedBank>) => Promise<void>;
   deactivateBank: (id: string) => Promise<void>;
-  createGroupBankLoan: (data: Omit<GroupBankLoan, "id" | "createdAt" | "status" | "createdBy">) => Promise<void>;
+  bankLoanAllocations: BankLoanAllocation[];
+  createGroupBankLoan: (data: Omit<GroupBankLoan, "id" | "createdAt" | "status" | "createdBy">) => Promise<GroupBankLoan>;
   updateGroupBankLoan: (id: string, data: Partial<GroupBankLoan>) => Promise<void>;
+  deleteGroupBankLoan: (id: string) => Promise<void>;
   closeGroupBankLoan: (id: string) => Promise<void>;
+  allocateBankLoanFunds: (bankLoanId: string, allocations: {memberId: string; allocatedPrincipal: number}[]) => Promise<void>;
+  recordBankLoanRepayment: (allocationId: string, data: {amount: number; date?: string; remarks?: string}) => Promise<void>;
+  getBankLoanAllocationLedger: (allocationId: string) => Promise<BankLoanLedgerEntry[]>;
   refreshData: () => Promise<void>;
 }
 
@@ -282,7 +317,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [loanLedgers, setLoanLedgers] = useState<LoanLedger[]>([]);
   const [affiliatedBanks, setAffiliatedBanks] = useState<AffiliatedBank[]>([]);
   const [groupBankLoans, setGroupBankLoans] = useState<GroupBankLoan[]>([]);
-  const [setBankLoanAllocations] = useState<BankLoanAllocation[]>([]);
+  const [bankLoanAllocations, setBankLoanAllocations] = useState<BankLoanAllocation[]>([]);
   const [groupMembers, setGroupMembers] = useState<User[]>([]);
   const [groupRules, setGroupRules] = useState("");
   const [groupSettings, setGroupSettings] = useState<GroupSettings>(DEFAULT_SETTINGS);
@@ -291,19 +326,20 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const loadData = useCallback(async () => {
     if (!user?.groupId) return;
     const gid = user.groupId;
-    const [m, p, l, r, members, rules, settings, summary, banks] = await Promise.allSettled([
-      apiGet<Meeting[]>(`/api/groups/${gid}/meetings`),
-      apiGet<Payment[]>(`/api/groups/${gid}/payments`),
-      apiGet<Loan[]>(`/api/groups/${gid}/loans`),
-      apiGet<LoanRepayment[]>(`/api/groups/${gid}/repayments`),
-      apiGet<User[]>(`/api/groups/${gid}/members`),
-      apiGet<{ rules: string }>(`/api/groups/${gid}/rules`),
-      apiGet<GroupSettings>(`/api/groups/${gid}/settings`),
-      apiGet<GroupSummary>(`/api/groups/${gid}/summary`),
-      apiGet<AffiliatedBank[]>(`/api/groups/${gid}/banks`),
-      apiGet<GroupBankLoan[]>(`/api/groups/${gid}/bank-loans`),
-      apiGet<BankLoanAllocation[]>(`/api/groups/${gid}/bank-loan-allocations`),
+    const results = await Promise.allSettled([
+      apiGet<Meeting[]>(`/api/groups/${gid}/meetings`),           // 0
+      apiGet<Payment[]>(`/api/groups/${gid}/payments`),           // 1
+      apiGet<Loan[]>(`/api/groups/${gid}/loans`),                 // 2
+      apiGet<LoanRepayment[]>(`/api/groups/${gid}/repayments`),   // 3
+      apiGet<User[]>(`/api/groups/${gid}/members`),               // 4
+      apiGet<{ rules: string }>(`/api/groups/${gid}/rules`),       // 5
+      apiGet<GroupSettings>(`/api/groups/${gid}/settings`),        // 6
+      apiGet<GroupSummary>(`/api/groups/${gid}/summary`),          // 7
+      apiGet<AffiliatedBank[]>(`/api/groups/${gid}/banks`),        // 8
+      apiGet<GroupBankLoan[]>(`/api/groups/${gid}/bank-loans`),    // 9
+      apiGet<BankLoanAllocation[]>(`/api/groups/${gid}/bank-loan-allocations`), // 10
     ]);
+    const [m, p, l, r, members, rules, settings, summary, banks, gbl, bla] = results;
     if (m.status === "fulfilled") setMeetings(m.value);
     if (p.status === "fulfilled") setPayments(p.value);
     if (l.status === "fulfilled") setLoans(l.value);
@@ -313,25 +349,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
     if (settings.status === "fulfilled") setGroupSettings(settings.value);
     if (summary.status === "fulfilled") setGroupSummary(summary.value);
     if (banks.status === "fulfilled") setAffiliatedBanks(banks.value);
-    
-    // We destructured to banks, but we added two more endpoints to the Promise.allSettled array.
-    // m, p, l, r, members, rules, settings, summary, banks, gbl, bla
-    // Wait, Promise.allSettled returns an array. The arguments array will have it at indices 9 and 10.
-    const res = await Promise.allSettled([
-      apiGet<Meeting[]>(`/api/groups/${gid}/meetings`),
-      apiGet<Payment[]>(`/api/groups/${gid}/payments`),
-      apiGet<Loan[]>(`/api/groups/${gid}/loans`),
-      apiGet<LoanRepayment[]>(`/api/groups/${gid}/repayments`),
-      apiGet<User[]>(`/api/groups/${gid}/members`),
-      apiGet<{ rules: string }>(`/api/groups/${gid}/rules`),
-      apiGet<GroupSettings>(`/api/groups/${gid}/settings`),
-      apiGet<GroupSummary>(`/api/groups/${gid}/summary`),
-      apiGet<AffiliatedBank[]>(`/api/groups/${gid}/banks`),
-      apiGet<GroupBankLoan[]>(`/api/groups/${gid}/bank-loans`),
-    ]);
-    const [, , , , , , , , banksRes, gbl] = res;
-    if (gbl && gbl.status === "fulfilled") setGroupBankLoans(gbl.value);
-    const failures = [m, p, l, r, members, rules, settings, summary, banks].filter((res) => res.status === "rejected");
+    if (gbl.status === "fulfilled") setGroupBankLoans(gbl.value);
+    if (bla.status === "fulfilled") setBankLoanAllocations(bla.value);
+    const failures = results.filter((res) => res.status === "rejected");
     if (failures.length > 0) {
       console.warn(`${failures.length} data endpoint(s) failed to load:`, failures.map((f) => (f as PromiseRejectedResult).reason?.message));
     }
@@ -348,7 +368,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   }, [user?.groupId]);
 
   const updateMeeting = useCallback(async (id: string, data: Partial<Meeting>) => {
-    const updated = await apiPatch<Meeting>(`/api/meetings/${id}`, data);
+    const updated = await apiPatch<Meeting>(`/api/meetings/${id}`, { ...data, deviceTime: getDeviceTimestamp() });
     setMeetings((prev) => prev.map((m) => (m.id === id ? updated : m)));
   }, []);
 
@@ -520,14 +540,20 @@ export function DataProvider({ children }: { children: ReactNode }) {
     await loadData();
   };
 
-  const createGroupBankLoan = async (data: any) => {
-    if (!user?.groupId) return;
-    await apiPost(`/api/groups/${user.groupId}/bank-loans`, data);
-    await loadData();
+  const createGroupBankLoan = async (data: any): Promise<GroupBankLoan> => {
+    if (!user?.groupId) throw new Error("Not authenticated");
+    const loan = await apiPost<GroupBankLoan>(`/api/groups/${user.groupId}/bank-loans`, data);
+    setGroupBankLoans((prev) => [...prev, loan]);
+    return loan;
   };
   
   const updateGroupBankLoan = async (id: string, data: any) => {
     await apiPatch(`/api/bank-loans/${id}`, data);
+    await loadData();
+  };
+  
+  const deleteGroupBankLoan = async (id: string) => {
+    await apiDelete(`/api/bank-loans/${id}`);
     await loadData();
   };
   
@@ -536,32 +562,56 @@ export function DataProvider({ children }: { children: ReactNode }) {
     await loadData();
   };
   
-  const allocateBankLoanFunds = async (bankLoanId: string, allocations: any) => {
-    await apiPost(`/api/bank-loans/${bankLoanId}/allocations`, { allocations });
-    await loadData();
+  const allocateBankLoanFunds = async (bankLoanId: string, allocations: {memberId: string; allocatedPrincipal: number}[]) => {
+    const result = await apiPost<BankLoanAllocation[]>(`/api/bank-loans/${bankLoanId}/allocations`, { allocations });
+    setBankLoanAllocations((prev) => {
+      const newIds = new Set(result.map(a => a.id));
+      return [...prev.filter(a => !newIds.has(a.id)), ...result];
+    });
+    // Also refresh bank loans in case status changed
+    if (user?.groupId) {
+      apiGet<GroupBankLoan[]>(`/api/groups/${user.groupId}/bank-loans`).then(setGroupBankLoans).catch(() => {});
+    }
+  };
+  
+  const recordBankLoanRepayment = async (allocationId: string, data: {amount: number; date?: string; remarks?: string}) => {
+    const response = await apiPost<{ repayment: any; allocation: BankLoanAllocation }>(`/api/bank-loan-allocations/${allocationId}/repayments`, { ...data, deviceTime: getDeviceTimestamp() });
+    if (response.allocation) {
+      setBankLoanAllocations((prev) => prev.map(a => a.id === allocationId ? response.allocation : a));
+    }
+    // Refresh bank loans to check if any became completed
+    if (user?.groupId) {
+      apiGet<GroupBankLoan[]>(`/api/groups/${user.groupId}/bank-loans`).then(setGroupBankLoans).catch(() => {});
+    }
+  };
+
+  const getBankLoanAllocationLedger = async (allocationId: string): Promise<BankLoanLedgerEntry[]> => {
+    return apiGet<BankLoanLedgerEntry[]>(`/api/bank-loan-allocations/${allocationId}/ledger`);
   };
   
 
   const value = useMemo(
     () => ({
-      meetings, payments, loans, loanRepayments, loanLedgers, affiliatedBanks, groupBankLoans, groupMembers, groupRules, groupSettings, groupSummary,
+      meetings, payments, loans, loanRepayments, loanLedgers, affiliatedBanks, groupBankLoans, bankLoanAllocations, groupMembers, groupRules, groupSettings, groupSummary,
       createMeeting, updateMeeting, cancelMeeting, deleteMeeting,
       declarePayment, verifyPayment, reopenPayment, deletePayment, uploadQrCode,
       requestLoan, treasurerApproveLoan, treasurerRejectLoan, approveLoan, rejectLoan, deleteLoan,
       addRepayment, deleteRepayment,
       assignTreasurer,
       createBank, updateBank, deactivateBank,
-      createGroupBankLoan, updateGroupBankLoan, closeGroupBankLoan,
+      createGroupBankLoan, updateGroupBankLoan, deleteGroupBankLoan, closeGroupBankLoan,
+      allocateBankLoanFunds, recordBankLoanRepayment, getBankLoanAllocationLedger,
       updateGroupRules, updateGroupSettings, updateGroupInfo, updateMember, refreshData: loadData,
     }),
-    [meetings, payments, loans, loanRepayments, loanLedgers, affiliatedBanks, groupBankLoans, groupMembers, groupRules, groupSettings, groupSummary,
+    [meetings, payments, loans, loanRepayments, loanLedgers, affiliatedBanks, groupBankLoans, bankLoanAllocations, groupMembers, groupRules, groupSettings, groupSummary,
       createMeeting, updateMeeting, cancelMeeting, deleteMeeting,
       declarePayment, verifyPayment, reopenPayment, deletePayment, uploadQrCode,
       requestLoan, treasurerApproveLoan, treasurerRejectLoan, approveLoan, rejectLoan, deleteLoan,
       addRepayment, deleteRepayment,
       assignTreasurer,
       createBank, updateBank, deactivateBank,
-      createGroupBankLoan, updateGroupBankLoan, closeGroupBankLoan,
+      createGroupBankLoan, updateGroupBankLoan, deleteGroupBankLoan, closeGroupBankLoan,
+      allocateBankLoanFunds, recordBankLoanRepayment, getBankLoanAllocationLedger,
       updateGroupRules, updateGroupSettings, updateGroupInfo, updateMember, loadData],
   );
 

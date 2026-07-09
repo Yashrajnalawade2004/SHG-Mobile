@@ -43,12 +43,12 @@ function groupByMonth<T>(items: T[], dateKey: string): { title: string; data: T[
 
 export default function HistoryScreen() {
   const insets = useSafeAreaInsets();
-  const { user, isPresident } = useAuth();
+  const { user, isPresident, isTreasurer } = useAuth();
   const { t, language } = useLanguage();
   const { payments, loans, loanRepayments, meetings, groupMembers } = useData();
   const [activeTab, setActiveTab] = useState<TabKey>("payments");
   const [selectedMemberId, setSelectedMemberId] = useState<string | null>(
-    isPresident ? null : (user?.id || null)
+    (isPresident || isTreasurer) ? null : (user?.id || null)
   );
 
   const tabs: { key: TabKey; label: string; icon: string }[] = [
@@ -201,7 +201,7 @@ export default function HistoryScreen() {
         <View style={{ width: 24 }} />
       </View>
 
-      {isPresident && (
+      {(isPresident || isTreasurer) && (
         <View style={styles.memberFilterWrap}>
           <Pressable
             style={[styles.memberChip, !selectedMemberId && styles.memberChipActive]}

@@ -219,7 +219,7 @@ export default function LoanDetailScreen() {
         "due"
       )
     : null;
-  const showRepayment = loan.status === "approved" || loan.status === "completed";
+  const showRepayment = loan.status === "approved";
   const canDelete = isPresident;
 
   return (
@@ -436,94 +436,30 @@ export default function LoanDetailScreen() {
           </View>
         )}
 
-        {/* NEW LIFECYCLE TIMELINE */}
         <View style={styles.timelineCard}>
           <Text style={styles.timelineTitle}>{t("approval_timeline")}</Text>
-          
-          {/* 5. Completed */}
-          {(loan.status === "completed" || loan.status === "approved") && (
-            <View style={[styles.timelineStep, { opacity: loan.status === "completed" ? 1 : 0.4 }]}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                {loan.status === "completed" ? (
-                  <Ionicons name="checkmark-circle" size={16} color={Colors.light.success} />
-                ) : (
-                  <Ionicons name="ellipse-outline" size={16} color={Colors.light.textMuted} />
-                )}
-                <Text style={[styles.timelineStepTitle, loan.status === "completed" && { color: Colors.light.success }]}>
-                  {t("loan_completed") || "Loan Completed"}
-                </Text>
-              </View>
-              <Text style={styles.timelineMeta}>
-                {loan.status === "completed" ? (t("completed") || "Completed") : (t("pending") || "Pending")}
-              </Text>
-            </View>
-          )}
-
-          {/* 4. Repayments */}
-          {(loan.status === "completed" || loan.status === "approved") && (
-            <View style={[styles.timelineStep, { opacity: loan.status === "approved" || loan.status === "completed" ? 1 : 0.4 }]}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                {loan.status === "completed" ? (
-                  <Ionicons name="checkmark-circle" size={16} color={Colors.light.success} />
-                ) : loan.status === "approved" ? (
-                  <Ionicons name="sync-circle" size={16} color={Colors.light.primary} />
-                ) : (
-                  <Ionicons name="ellipse-outline" size={16} color={Colors.light.textMuted} />
-                )}
-                <Text style={[styles.timelineStepTitle, loan.status === "approved" && { color: Colors.light.primary }]}>
-                  {t("repayment") || "Monthly Repayments"} {loan.status === "approved" ? "(In Progress)" : ""}
-                </Text>
-              </View>
-              <Text style={styles.timelineMeta}>
-                {loan.status === "completed" ? (t("completed") || "Completed") : loan.status === "approved" ? (t("active") || "Active") : (t("pending") || "Pending")}
-              </Text>
-            </View>
-          )}
-
-          {/* 3. Loan Disbursed */}
-          {(loan.status === "completed" || loan.status === "approved") && (
-            <View style={styles.timelineStep}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <Ionicons name="checkmark-circle" size={16} color={Colors.light.success} />
-                <Text style={styles.timelineStepTitle}>{t("ledger_loan_disbursed") || "Loan Disbursed"}</Text>
-              </View>
-              <Text style={styles.timelineMeta}>
-                {loan.approvedAt ? new Date(loan.approvedAt).toLocaleDateString("en-IN") : (t("completed") || "Completed")}
-              </Text>
-            </View>
-          )}
-
-          {/* 2. President Decision (Approved / Rejected) */}
-          {(loan.status === "approved" || loan.status === "completed" || loan.status === "rejected" || loan.status === "treasurer_rejected") ? (
-            <View style={styles.timelineStep}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <Ionicons name={(loan.status === "approved" || loan.status === "completed") ? "checkmark-circle" : "close-circle"} size={16} color={(loan.status === "approved" || loan.status === "completed") ? Colors.light.success : Colors.light.danger} />
-                <Text style={[styles.timelineStepTitle, (loan.status === "rejected" || loan.status === "treasurer_rejected") && { color: Colors.light.danger }]}>
-                  {(loan.status === "approved" || loan.status === "completed") ? (t("president_approved") || "President Approved") : (t("loan_rejected") || "Loan Rejected")}
-                </Text>
-              </View>
-              <Text style={styles.timelineMeta}>
-                {loan.approvedAt ? new Date(loan.approvedAt).toLocaleDateString("en-IN") : loan.rejectedAt ? new Date(loan.rejectedAt).toLocaleDateString("en-IN") : (t("completed") || "Completed")}
-              </Text>
-            </View>
-          ) : (
-            <View style={styles.timelineStep}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <Ionicons name="time" size={16} color="#D97706" />
-                <Text style={[styles.timelineStepTitle, { color: "#D97706" }]}>{t("president_review") || "President Review"} (Pending)</Text>
-              </View>
-              <Text style={styles.timelineMeta}>{t("pending") || "Pending"}</Text>
-            </View>
-          )}
-
-          {/* 1. Loan Requested (Always first/bottom) */}
           <View style={styles.timelineStep}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-              <Ionicons name="checkmark-circle" size={16} color={Colors.light.success} />
-              <Text style={styles.timelineStepTitle}>{t("loan_requested") || "Loan Requested"}</Text>
-            </View>
+            <Text style={styles.timelineStepTitle}>{t("loan_requested")}</Text>
             <Text style={styles.timelineMeta}>{new Date(loan.createdAt).toLocaleDateString("en-IN")}</Text>
           </View>
+          {loan.status === "pending_treasurer" && (
+            <View style={styles.timelineStep}>
+              <Text style={styles.timelineStepTitle}>{t("treasurer_review_pending")}</Text>
+              <Text style={styles.timelineMeta}>{t("pending")}</Text>
+            </View>
+          )}
+          {(loan.status === "pending_president" || loan.status === "approved" || loan.status === "rejected" || loan.status === "treasurer_rejected") && (
+            <View style={styles.timelineStep}>
+              <Text style={styles.timelineStepTitle}>{loan.treasurerActionAt ? t("treasurer_reviewed") : t("treasurer_review_pending")}</Text>
+              <Text style={styles.timelineMeta}>{loan.treasurerActionAt ? new Date(loan.treasurerActionAt).toLocaleDateString("en-IN") : t("pending")}</Text>
+            </View>
+          )}
+          {isFinal && (
+            <View style={styles.timelineStep}>
+              <Text style={styles.timelineStepTitle}>{loan.status === "approved" ? t("president_approved") : t("president_rejected")}</Text>
+              <Text style={styles.timelineMeta}>{loan.approvedAt ? new Date(loan.approvedAt).toLocaleDateString("en-IN") : t("pending")}</Text>
+            </View>
+          )}
         </View>
 
         {showTreasurerActions && (
@@ -592,7 +528,7 @@ export default function LoanDetailScreen() {
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionTitle}>{t("repayment")}</Text>
-              {isPresident && loan.status === "approved" && (
+              {isPresident && (
                 <Pressable onPress={() => setShowRepay(!showRepay)}>
                   <Ionicons name={showRepay ? "close" : "add-circle"} size={24} color={Colors.light.primary} />
                 </Pressable>
@@ -659,104 +595,63 @@ export default function LoanDetailScreen() {
               </View>
             )}
 
-            {displayEntries.length === 0 ? (
-              <View style={{ alignItems: "center", paddingVertical: 32 }}>
-                <Ionicons name="document-outline" size={32} color={Colors.light.textMuted} />
-                <Text style={{ color: Colors.light.textMuted, marginTop: 8 }}>{t("auto.no_repayments_yet")}</Text>
-              </View>
-            ) : (
-              <ScrollView horizontal showsHorizontalScrollIndicator>
-                <View>
-                  {/* Table Header */}
-                  <View style={[styles.tableRow, styles.tableHeader]}>
-                    <Text style={[styles.tableCell, styles.tableHeaderText, { width: 90 }]}>{t("date") || "Date"}</Text>
-                    {isReducingBalance && <Text style={[styles.tableCell, styles.tableHeaderText, { width: 110 }]}>{t("receipt_no") || "Receipt No."}</Text>}
-                    <Text style={[styles.tableCell, styles.tableHeaderText, { width: 120 }]}>{t("particulars") || "Particulars"}</Text>
-                    {isReducingBalance && <Text style={[styles.tableCell, styles.tableHeaderText, { width: 120 }]}>{t("opening_principal") || "Opening Prin."}</Text>}
-                    {isReducingBalance && <Text style={[styles.tableCell, styles.tableHeaderText, { width: 110 }]}>{t("interest_charged") || "Int. Charged"}</Text>}
-                    {isReducingBalance && <Text style={[styles.tableCell, styles.tableHeaderText, { width: 110 }]}>{t("interest_paid_label") || "Int. Paid"}</Text>}
-                    {isReducingBalance && <Text style={[styles.tableCell, styles.tableHeaderText, { width: 110 }]}>{t("principal_paid_label") || "Prin. Paid"}</Text>}
-                    <Text style={[styles.tableCell, styles.tableHeaderText, { width: 110 }]}>{t("total_payment") || "Total Payment"}</Text>
-                    <Text style={[styles.tableCell, styles.tableHeaderText, { width: 120 }]}>{t("closing_principal") || "Closing Prin."}</Text>
-                    {isReducingBalance && <Text style={[styles.tableCell, styles.tableHeaderText, { width: 130 }]}>{t("outstanding_interest") || "Outs. Int."}</Text>}
+            {displayEntries.length > 0 ? (
+              displayEntries.map((r, i) => (
+                <View key={r.id} style={[styles.repaymentItem, { flexDirection: 'column', alignItems: 'stretch' }]}>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <Ionicons name={isReducingBalance && r.type === "disbursement" ? "wallet" : "return-down-forward"} size={16} color={Colors.light.success} />
+                      <Text style={styles.repaymentDate}>{new Date(isReducingBalance ? r.date : r.date).toLocaleDateString("en-IN")}</Text>
+                    </View>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                      <Text style={styles.repaymentAmount}>Rs. {isReducingBalance ? r.paymentReceived.toLocaleString("en-IN") : r.amount.toLocaleString("en-IN")}</Text>
+                      {isPresident && !isReducingBalance && (
+                        <Pressable onPress={() => setDeleteRepaymentId(r.id)}>
+                          <Ionicons name="trash-outline" size={16} color={Colors.light.danger} />
+                        </Pressable>
+                      )}
+                    </View>
                   </View>
 
-                  {/* Table Rows */}
-                  {displayEntries.map((r, idx) => {
-                    const isDisb = isReducingBalance && r.type === "disbursement";
-                    return (
-                      <View key={r.id || idx} style={[styles.tableRow, isDisb && { backgroundColor: Colors.light.success + "12" }, idx % 2 === 1 && !isDisb && { backgroundColor: Colors.light.inputBg }]}>
-                        <Text style={[styles.tableCell, { width: 90 }]}>{new Date(isReducingBalance ? r.date : r.date).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "2-digit" })}</Text>
-                        
-                        {isReducingBalance && (
-                          <Text style={[styles.tableCell, { width: 110, color: Colors.light.primary }]}>{isDisb ? "-" : r.receiptNo || "-"}</Text>
-                        )}
-                        
-                        <Text style={[styles.tableCell, { width: 120, fontFamily: "Poppins_500Medium" }]}>
-                          {isReducingBalance ? (isDisb ? t("ledger_loan_disbursed") || "Loan Disbursed" : t("ledger_repayment") || "Repayment") : "Repayment"}
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', backgroundColor: Colors.light.background, padding: 8, borderRadius: 8 }}>
+                    {isReducingBalance ? (
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ fontFamily: "Poppins_600SemiBold", fontSize: 11, color: Colors.light.text }}>
+                          {r.type === 'disbursement' ? (t("ledger_loan_disbursed") || "Loan Disbursed") : (t("ledger_repayment") || "Repayment")}
                         </Text>
-                        
-                        {isReducingBalance && (
+                        {r.type === 'repayment' && (
                           <>
-                            <Text style={[styles.tableCell, { width: 120 }]}>{r.openingPrincipal?.toLocaleString("en-IN") || "-"}</Text>
-                            <Text style={[styles.tableCell, { width: 110 }]}>{r.interestCharged?.toLocaleString("en-IN") || "-"}</Text>
-                            <Text style={[styles.tableCell, { width: 110 }]}>{r.interestPaid?.toLocaleString("en-IN") || "-"}</Text>
-                            <Text style={[styles.tableCell, { width: 110 }]}>{r.principalPaid?.toLocaleString("en-IN") || "-"}</Text>
+                            <Text style={{ fontFamily: "Poppins_400Regular", fontSize: 11, color: Colors.light.textSecondary }}>{t("ledger_paid") || "Paid"}: Rs. {r.paymentReceived.toLocaleString("en-IN")}</Text>
+                            <Text style={{ fontFamily: "Poppins_400Regular", fontSize: 11, color: Colors.light.textSecondary }}>{t("ledger_principal") || "Principal"}: Rs. {r.principalPaid.toLocaleString("en-IN")} | {t("ledger_interest") || "Interest"}: Rs. {r.interestPaid.toLocaleString("en-IN")}</Text>
                           </>
                         )}
-
-                        <Text style={[styles.tableCell, { width: 110, fontFamily: "Poppins_600SemiBold" }]}>
-                          {isReducingBalance ? (r.paymentReceived?.toLocaleString("en-IN") || "-") : r.amount?.toLocaleString("en-IN")}
-                        </Text>
-                        
-                        <Text style={[styles.tableCell, { width: 120, color: (isReducingBalance ? r.closingPrincipal : r.runRem) > 0 ? Colors.light.danger : Colors.light.success, fontFamily: "Poppins_600SemiBold" }]}>
-                          {isReducingBalance ? r.closingPrincipal?.toLocaleString("en-IN") : r.runRem?.toLocaleString("en-IN")}
-                        </Text>
-
-                        {isReducingBalance && (
-                          <Text style={[styles.tableCell, { width: 130, color: r.outstandingInterest > 0 ? Colors.light.danger : Colors.light.success }]}>
-                            {r.outstandingInterest?.toLocaleString("en-IN") || "0"}
-                          </Text>
-                        )}
+                        <Text style={{ fontFamily: "Poppins_400Regular", fontSize: 11, color: Colors.light.textSecondary }}>{t("ledger_balance") || "Balance"}: Rs. {r.closingPrincipal.toLocaleString("en-IN")}</Text>
                       </View>
-                    );
-                  })}
-
-                  {/* Settlement Summary Footer */}
-                  {loan.status === "completed" && (
-                    <View style={[styles.tableRow, { backgroundColor: Colors.light.primary + "20", borderTopWidth: 2, borderTopColor: Colors.light.primary }]}>
-                       <Text style={[styles.tableCell, { width: isReducingBalance ? 90 + 110 + 120 + 120 + 110 : 90 + 120, fontFamily: "Poppins_700Bold" }]}>{t("bank_loan.total") || "Total"}</Text>
-                       {isReducingBalance && (
-                         <>
-                           <Text style={[styles.tableCell, { width: 110, fontFamily: "Poppins_700Bold" }]}>{(loan.totalInterestPaid || 0).toLocaleString("en-IN")}</Text>
-                           <Text style={[styles.tableCell, { width: 110, fontFamily: "Poppins_700Bold" }]}>{(loan.totalPrincipalPaid || 0).toLocaleString("en-IN")}</Text>
-                         </>
-                       )}
-                       <Text style={[styles.tableCell, { width: 110, fontFamily: "Poppins_700Bold" }]}>
-                         {isReducingBalance ? ((loan.totalPrincipalPaid || 0) + (loan.totalInterestPaid || 0)).toLocaleString("en-IN") : totalRepaid.toLocaleString("en-IN")}
-                       </Text>
-                       <Text style={[styles.tableCell, { width: 120, fontFamily: "Poppins_700Bold" }]}>0</Text>
-                       {isReducingBalance && <Text style={[styles.tableCell, { width: 130, fontFamily: "Poppins_700Bold" }]}>0</Text>}
-                    </View>
+                    ) : (
+                      <>
+                        <View style={{ flex: 1 }}>
+                          <Text style={{ fontFamily: "Poppins_600SemiBold", fontSize: 11, color: Colors.light.text }}>Repayment</Text>
+                          <Text style={{ fontFamily: "Poppins_400Regular", fontSize: 11, color: Colors.light.textSecondary }}>{t("ledger_paid") || "Paid"}: Rs. {r.amount.toLocaleString("en-IN")}</Text>
+                          <Text style={{ fontFamily: "Poppins_400Regular", fontSize: 11, color: Colors.light.textSecondary }}>Rem: Rs. {r.runRem.toLocaleString("en-IN")}</Text>
+                        </View>
+                      </>
+                    )}
+                  </View>
+                  {r.remarks && (
+                    <Text style={{ fontFamily: "Poppins_400Regular", fontSize: 11, color: Colors.light.textSecondary, marginTop: 4, fontStyle: 'italic' }}>
+                      "{r.remarks}"
+                    </Text>
                   )}
                 </View>
-              </ScrollView>
+              ))
+            ) : (
+              <Text style={styles.noRepayments}>{t("auto.no_repayments_yet")}</Text>
             )}
 
-            {/* Final Settlement Display if Completed */}
-            {loan.status === "completed" && (
-              <View style={{ marginTop: 24, backgroundColor: Colors.light.success + "15", padding: 16, borderRadius: 12, borderWidth: 1, borderColor: Colors.light.success + "50" }}>
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 12 }}>
-                  <Ionicons name="checkmark-done-circle" size={24} color={Colors.light.success} />
-                  <Text style={{ fontFamily: "Poppins_700Bold", fontSize: 16, color: Colors.light.success }}>{t("fully_repaid") || "Fully Repaid & Settled"}</Text>
-                </View>
-                <View style={{ gap: 8 }}>
-                  <View style={{ flexDirection: "row", justifyContent: "space-between" }}><Text style={{ fontFamily: "Poppins_500Medium", color: Colors.light.textSecondary }}>{t("loanAmount") || "Loan Amount"}</Text><Text style={{ fontFamily: "Poppins_600SemiBold", color: Colors.light.text }}>Rs. {loan.amount.toLocaleString("en-IN")}</Text></View>
-                  <View style={{ flexDirection: "row", justifyContent: "space-between" }}><Text style={{ fontFamily: "Poppins_500Medium", color: Colors.light.textSecondary }}>{t("total_principal_paid") || "Total Principal Paid"}</Text><Text style={{ fontFamily: "Poppins_600SemiBold", color: Colors.light.text }}>Rs. {(loan.totalPrincipalPaid || loan.amount).toLocaleString("en-IN")}</Text></View>
-                  <View style={{ flexDirection: "row", justifyContent: "space-between" }}><Text style={{ fontFamily: "Poppins_500Medium", color: Colors.light.textSecondary }}>{t("total_interest_paid") || "Total Interest Paid"}</Text><Text style={{ fontFamily: "Poppins_600SemiBold", color: Colors.light.text }}>Rs. {(loan.totalInterestPaid || 0).toLocaleString("en-IN")}</Text></View>
-                  <View style={{ borderTopWidth: 1, borderTopColor: Colors.light.border, marginVertical: 4 }} />
-                  <View style={{ flexDirection: "row", justifyContent: "space-between" }}><Text style={{ fontFamily: "Poppins_700Bold", color: Colors.light.text }}>{t("total_amount_repaid") || "Total Amount Repaid"}</Text><Text style={{ fontFamily: "Poppins_700Bold", color: Colors.light.primary }}>Rs. {isReducingBalance ? ((loan.totalPrincipalPaid || 0) + (loan.totalInterestPaid || 0)).toLocaleString("en-IN") : totalRepaid.toLocaleString("en-IN")}</Text></View>
-                </View>
+            {repayments.length > 0 && (
+              <View style={styles.totalRow}>
+                <Text style={styles.totalLabel}>{t("auto.total_repaid")}</Text>
+                <Text style={styles.totalValue}>Rs. {totalRepaid.toLocaleString("en-IN")}</Text>
               </View>
             )}
           </View>
@@ -895,10 +790,8 @@ export default function LoanDetailScreen() {
 }
 
 const styles = StyleSheet.create({
-  tableRow: { flexDirection: "row", borderBottomWidth: 1, borderBottomColor: Colors.light.border + "80", paddingVertical: 8 },
-  tableHeader: { backgroundColor: Colors.light.primary + "15" },
-  tableCell: { paddingHorizontal: 8, fontSize: 12, fontFamily: "Poppins_400Regular", color: Colors.light.text },
-  tableHeaderText: { fontFamily: "Poppins_600SemiBold", color: Colors.light.primary, fontSize: 11 },
+  tableHeader: { fontFamily: "Poppins_600SemiBold", fontSize: 11, color: "#fff" },
+  tableCell: { fontFamily: "Poppins_400Regular", fontSize: 11, color: Colors.light.text },
   container: { flex: 1, backgroundColor: Colors.light.background },
   content: { paddingHorizontal: 20 },
   header: {

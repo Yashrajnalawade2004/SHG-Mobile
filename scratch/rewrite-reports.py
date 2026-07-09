@@ -1,4 +1,12 @@
-// @ts-nocheck
+import json
+
+def build_new_reports_tsx():
+    # Read the original file
+    with open("app/reports.tsx", "r", encoding="utf-8") as f:
+        original = f.read()
+
+    # The new file content
+    new_content = """// @ts-nocheck
 import { useState, useEffect } from "react";
 import { View, Text, StyleSheet, ScrollView, Pressable, Platform, Alert, ActivityIndicator, TextInput, KeyboardAvoidingView, Modal } from "react-native";
 import { router } from "expo-router";
@@ -607,3 +615,10 @@ const styles = StyleSheet.create({
   dropdownItemText: { fontSize: 15, color: Colors.light.text, fontFamily: "Poppins_400Regular" },
   dropdownItemTextSelected: { color: Colors.light.primary, fontFamily: "Poppins_600SemiBold" },
 });
+"""
+
+    with open("app/reports.tsx", "w", encoding="utf-8") as f:
+        f.write(new_content)
+    print("Rewrote app/reports.tsx")
+
+build_new_reports_tsx()
