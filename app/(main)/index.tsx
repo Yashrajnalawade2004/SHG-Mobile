@@ -223,80 +223,8 @@ export default function DashboardScreen() {
   const activeLoans = loans.filter((l) => l.status === "approved" && l.remainingBalance > 0);
   const activeMembers = groupMembers.filter((m) => m.status === "active");
 
-  // ── Contribution Reminder — full payment lifecycle (members only) ───────────
-  // State machine:
-  //   'pending'   → no payment for this month at all
-  //   'submitted' → payment exists but not yet verified (pending / pending_verification)
-  //   'rejected'  → payment was rejected or payment_not_received
-  //   null        → confirmed — hide the card completely
-  const contributionReminder = useMemo(() => {
-    if (isPresident || isTreasurer || !user) return null;
-    const now = new Date();
-    const currentMonth = now.getMonth();
-    const currentYear = now.getFullYear();
-
-    // Find all payments by this member for the current month
-    const thisMonthPayments = payments.filter(
-      (p) => p.memberId === user.id &&
-        new Date(p.date).getMonth() === currentMonth &&
-        new Date(p.date).getFullYear() === currentYear
-    );
-
-    // ---- State: confirmed — hide card ----
-    const confirmed = thisMonthPayments.find(
-      (p) => p.status === "confirmed"
-    );
-    if (confirmed) return null;
-
-    // ---- State: submitted — awaiting verification ----
-    const submitted = thisMonthPayments.find(
-      (p) => p.status === "pending" || p.status === "pending_verification"
-    );
-    if (submitted) {
-      return { state: "submitted" as const, payment: submitted };
-    }
-
-    // ---- State: rejected ----
-    const rejected = thisMonthPayments.find(
-      (p) => p.status === "rejected" || p.status === "payment_not_received"
-    );
-    if (rejected) {
-      return { state: "rejected" as const, payment: rejected };
-    }
-
-    // ---- State: pending — nothing submitted yet ----
-    const dueDay = groupSettings.contributionDueDay ?? 5;
-    const graceDays = groupSettings.gracePeriodDays ?? 5;
-    const monthlyAmount = groupSettings.monthlyContributionAmount ?? 0;
-    const lateFeeAmount = groupSettings.lateFeeAmount ?? 0;
-    const lateFeeType = groupSettings.lateFeeType ?? "fixed";
-
-    const dueDate = new Date(currentYear, currentMonth, dueDay);
-    const diffMs = dueDate.getTime() - now.getTime();
-    const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
-    const isOverdue = diffDays < 0;
-    const overdueBy = isOverdue ? Math.abs(diffDays) : 0;
-    const withinGrace = isOverdue && overdueBy <= graceDays;
-
-    let applicableLateFee = 0;
-    if (isOverdue && !withinGrace && monthlyAmount > 0) {
-      applicableLateFee = lateFeeType === "percentage"
-        ? Math.round((monthlyAmount * lateFeeAmount) / 100)
-        : lateFeeAmount;
-    }
-
-    return {
-      state: "pending" as const,
-      dueDate,
-      diffDays,
-      isOverdue,
-      overdueBy,
-      withinGrace,
-      monthlyAmount,
-      applicableLateFee,
-      totalPayable: monthlyAmount + applicableLateFee,
-    };
-  }, [user, payments, groupSettings, isPresident, isTreasurer]);
+  // Payment submission is President-only; members no longer receive a self-service payment prompt.
+  const contributionReminder: any = null;
 
   // ── Loan Reminder (members only) ───────────
   const loanReminder = useMemo(() => {
@@ -1445,5 +1373,3 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
 });
-
-

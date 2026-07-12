@@ -509,26 +509,45 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post(
     "/api/groups/:groupId/payments",
     requireAuth as any,
+    requirePresidentOrTreasurer as any,
     async (req: AuthRequest, res) => {
       const { groupId } = req.params;
       if (req.currentUser!.groupId !== groupId)
         return res.status(403).json({ error: "Access denied" });
-      const { amount, mode } = req.body;
+      const { memberId, amount, lateFee = 0, month, mode } = req.body;
       if (!amount || amount <= 0)
         return res.status(400).json({ error: "Valid amount required" });
+      if (!Number.isInteger(Number(amount)) || !Number.isInteger(Number(lateFee)) || Number(lateFee) < 0) {
+        return res.status(400).json({ error: "Amount and late fee must be whole, non-negative values" });
+      }
+      if (!memberId) return res.status(400).json({ error: "Member is required" });
+      if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month || "")) {
+        return res.status(400).json({ error: "Valid payment month required" });
+      }
+      const [paymentYear] = month.split("-").map(Number);
+      if (paymentYear < 1900 || paymentYear > 2100) {
+        return res.status(400).json({ error: "Valid payment year required" });
+      }
       const paymentMode = mode === "online" ? "online" : "cash";
       const user = req.currentUser!;
+      const member = await storage.getUserById(memberId);
+      if (!member || member.groupId !== groupId || member.status !== "active") {
+        return res.status(400).json({ error: "Selected member is not active in this group" });
+      }
       const payment = await storage.createPayment({
         groupId,
-        memberId: user.id,
-        memberName: user.name,
+        memberId: member.id,
+        memberName: member.name,
         amount: Number(amount),
         expectedAmount: 0,
-        lateFee: 0,
-        month: "",
+        lateFee: Number(lateFee),
+        month,
+        dueDate: null,
         date: now(req),
         mode: paymentMode,
-        status: paymentMode === "online" ? "pending_verification" : "pending",
+        status: "confirmed",
+        verifiedBy: user.id,
+        verifiedAt: now(req),
       });
       return res.status(201).json(payment);
     },

@@ -69,6 +69,58 @@ export function filterByDateRange(
   return items;
 }
 
+/**
+ * Contributions belong to their selected month, which can be different from
+ * the timestamp on which the President/Treasurer entered the transaction.
+ * Records created before contribution periods existed fall back to their
+ * timestamp so historic data remains visible.
+ */
+export function filterPaymentsByContributionPeriod(
+  payments: any[],
+  timeRange: string,
+  startDate?: string,
+  endDate?: string,
+  filterMonth?: string,
+  filterYear?: string,
+) {
+  if (!payments || payments.length === 0) return payments;
+
+  const periodFor = (payment: any) => {
+    if (/^\d{4}-(0[1-9]|1[0-2])$/.test(payment.month || "")) return payment.month;
+    const recordedAt = new Date(payment.date || payment.createdAt);
+    return `${recordedAt.getFullYear()}-${String(recordedAt.getMonth() + 1).padStart(2, "0")}`;
+  };
+  const rangeStart = startDate ? `${new Date(startDate).getFullYear()}-${String(new Date(startDate).getMonth() + 1).padStart(2, "0")}` : undefined;
+  const rangeEnd = endDate ? `${new Date(endDate).getFullYear()}-${String(new Date(endDate).getMonth() + 1).padStart(2, "0")}` : undefined;
+
+  if (timeRange === "custom" && rangeStart && rangeEnd) {
+    return payments.filter((payment) => {
+      const period = periodFor(payment);
+      return period >= rangeStart && period <= rangeEnd;
+    });
+  }
+  if (timeRange === "month" && filterMonth && filterYear) {
+    const period = `${filterYear}-${filterMonth.padStart(2, "0")}`;
+    return payments.filter((payment) => periodFor(payment) === period);
+  }
+  if (timeRange === "quarter" && filterYear && startDate && endDate) {
+    return payments.filter((payment) => {
+      const period = periodFor(payment);
+      return period >= rangeStart && period <= rangeEnd;
+    });
+  }
+  if (timeRange === "half-year" && filterYear && startDate && endDate) {
+    return payments.filter((payment) => {
+      const period = periodFor(payment);
+      return period >= rangeStart && period <= rangeEnd;
+    });
+  }
+  if (timeRange === "year" && filterYear) {
+    return payments.filter((payment) => periodFor(payment).startsWith(`${filterYear}-`));
+  }
+  return payments;
+}
+
 // ─── CSS Styles ───────────────────────────────────────────────────────────────
 
 const getStyles = () => `
@@ -712,7 +764,7 @@ function getStatusBadgeStandard(status: string, t: any) {
 // ─── 1. Savings Report ────────────────────────────────────────────────────────
 
 export async function generateSavingsReport({ group, groupMembers, payments, timeRange, startDate, endDate, filterMonth, filterYear, paymentMethod, appliedFiltersText, t, user }: any) {
-  let filtered = filterByDateRange(payments, timeRange, startDate, endDate, filterMonth, filterYear);
+  let filtered = filterPaymentsByContributionPeriod(payments, timeRange, startDate, endDate, filterMonth, filterYear);
   if (paymentMethod && paymentMethod !== "all") {
     filtered = filtered.filter((p: any) => p.mode === paymentMethod);
   }
@@ -830,7 +882,7 @@ export async function generateMemberPassbook({ group, groupMembers, member, paym
     </table>
   `;
 
-  let savingsRows = filterByDateRange(mPayments, timeRange, startDate, endDate, filterMonth, filterYear).map((p:any, i:number) => {
+  let savingsRows = filterPaymentsByContributionPeriod(mPayments, timeRange, startDate, endDate, filterMonth, filterYear).map((p:any, i:number) => {
     return `<tr>
       <td class="c">${i+1}</td>
       <td class="c">${formatDate(p.date || p.createdAt)}</td>
@@ -1310,7 +1362,7 @@ export async function generateAnnualReport({ group, groupMembers, payments, loan
   const startDate = new Date(year, 0, 1).toISOString();
   const endDate = new Date(year, 11, 31, 23, 59, 59).toISOString();
   
-  const yPayments = filterByDateRange(payments, "custom", startDate, endDate);
+  const yPayments = filterPaymentsByContributionPeriod(payments, "year", undefined, undefined, undefined, String(year));
   const yMeetings = filterByDateRange(meetings, "custom", startDate, endDate);
   const yLoans = filterByDateRange(loans, "custom", startDate, endDate);
   const yBankLoans = filterByDateRange(bankLoans, "custom", startDate, endDate);
