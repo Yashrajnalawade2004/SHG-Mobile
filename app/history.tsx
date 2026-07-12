@@ -41,6 +41,15 @@ function groupByMonth<T>(items: T[], dateKey: string): { title: string; data: T[
   return Object.entries(groups).map(([title, data]) => ({ title, data }));
 }
 
+function contributionPeriod(payment: { month?: string | null; date: string }): string {
+  if (payment.month && /^\d{4}-(0[1-9]|1[0-2])$/.test(payment.month)) {
+    // A local midday avoids UTC month-boundary shifts when section headings
+    // are formatted on devices in a different timezone.
+    return `${payment.month}-01T12:00:00`;
+  }
+  return payment.date;
+}
+
 export default function HistoryScreen() {
   const insets = useSafeAreaInsets();
   const { user, isPresident, isTreasurer } = useAuth();
@@ -59,7 +68,7 @@ export default function HistoryScreen() {
 
   const filteredPayments = payments
     .filter((p) => selectedMemberId ? p.memberId === selectedMemberId : true)
-    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    .sort((a, b) => contributionPeriod(b).localeCompare(contributionPeriod(a)) || new Date(b.date).getTime() - new Date(a.date).getTime());
 
   const filteredLoans = loans
     .filter((l) => selectedMemberId ? l.memberId === selectedMemberId : true)
@@ -68,7 +77,7 @@ export default function HistoryScreen() {
   const sortedMeetings = [...meetings]
     .sort((a, b) => new Date(b.scheduledDate).getTime() - new Date(a.scheduledDate).getTime());
 
-  const paymentSections = groupByMonth(filteredPayments, "date");
+  const paymentSections = groupByMonth(filteredPayments.map((payment) => ({ ...payment, contributionPeriod: contributionPeriod(payment) })), "contributionPeriod");
   const loanSections = groupByMonth(filteredLoans, "createdAt");
   const meetingSections = groupByMonth(sortedMeetings, "scheduledDate");
 
@@ -85,7 +94,9 @@ export default function HistoryScreen() {
         </View>
         <View style={{ flex: 1 }}>
           <Text style={styles.historyTitle}>{item.memberName}</Text>
-          <Text style={styles.historyDate}>{formatDate(item.date)}</Text>
+          <Text style={styles.historyDate}>
+            {item.month ? `Contribution: ${item.month} · ` : ""}Recorded: {formatDate(item.date)}
+          </Text>
           {item.status === "confirmed" && (
             <Text style={styles.historyMeta}>{t("auto.verified_by")}: {verifier}</Text>
           )}

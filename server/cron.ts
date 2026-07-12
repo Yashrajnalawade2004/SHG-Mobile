@@ -23,76 +23,11 @@ async function runJobsSafely() {
   }
   
   try {
-    await generateMonthlyPayments();
+    // Payments are entered by the President as real transactions. Do not create
+    // synthetic monthly payment records, which would conflict with partial payments.
     await calculateLateFees();
   } catch (e) {
     console.error("Cron job error:", e);
-  }
-}
-
-async function generateMonthlyPayments() {
-  const groups = await storage.getAllGroups();
-  const now = new Date();
-  
-  for (const group of groups) {
-    const hasConfigured = await storage.hasGroupSettings(group.groupId);
-    if (!hasConfigured) continue;
-    
-    const settings = await storage.getGroupSettings(group.groupId);
-    const members = await storage.getUsersByGroupId(group.groupId);
-    const activeMembers = members.filter(m => m.status === "active");
-    
-    for (const member of activeMembers) {
-      let fallbackDate = member.joinDate || group.createdAt || new Date();
-      const joinDate = new Date(fallbackDate);
-      
-      let iterMonth: Date;
-      if (member.contributionStartMonth && member.contributionStartMonth.includes('-')) {
-        const [y, m] = member.contributionStartMonth.split('-');
-        iterMonth = new Date(parseInt(y), parseInt(m) - 1, 1);
-      } else {
-        iterMonth = new Date(joinDate.getFullYear() || new Date().getFullYear(), joinDate.getMonth() || new Date().getMonth(), 1);
-      }
-      
-      if (isNaN(iterMonth.getTime())) {
-        iterMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
-      }
-      
-      const memberPayments = await storage.getPaymentsForMember(group.groupId, member.id);
-      const existingMonths = new Set(memberPayments.map(p => p.month));
-      
-      const currentMonthDate = new Date(now.getFullYear(), now.getMonth(), 1);
-      
-      while (iterMonth <= currentMonthDate) {
-        const monthStr = `${iterMonth.getFullYear()}-${String(iterMonth.getMonth() + 1).padStart(2, "0")}`;
-        
-        if (!existingMonths.has(monthStr)) {
-          let dueDay = settings.contributionDueDay || 1;
-          let dueDate = new Date(iterMonth.getFullYear(), iterMonth.getMonth(), dueDay);
-          if (isNaN(dueDate.getTime())) {
-            dueDate = new Date(iterMonth.getFullYear(), iterMonth.getMonth(), 1);
-          }
-          const dueDateStr = dueDate.toISOString().split("T")[0];
-          
-          await storage.createPayment({
-            groupId: group.groupId,
-            memberId: member.id,
-            memberName: member.name,
-            amount: 0,
-            expectedAmount: settings.monthlyContributionAmount,
-            lateFee: 0,
-            month: monthStr,
-            dueDate: dueDate,
-            date: new Date(),
-            mode: "cash",
-            status: "payment_not_received"
-          });
-          console.log(`Generated missing payment for ${member.name} (${monthStr})`);
-        }
-        
-        iterMonth.setMonth(iterMonth.getMonth() + 1);
-      }
-    }
   }
 }
 
