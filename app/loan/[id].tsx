@@ -1,7 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   View, Text, StyleSheet, ScrollView, Pressable, Platform,
-  TextInput, Modal, Alert, Image
+  TextInput, Modal, Alert, Image, ActivityIndicator
 } from "react-native";
 import { useLocalSearchParams, router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -14,6 +14,7 @@ import { apiGet } from "@/lib/api";
 import { calculateShgTotal, calculateNextLedgerEntry, getCurrentLoanRecommendation } from "@/shared/accounting";
 import Colors from "@/constants/colors";
 import ConfirmDialog from "@/components/ConfirmDialog";
+import SHGDatePicker from "@/components/SHGDatePicker";
 
 function loanStatusColor(status: string): string {
   switch (status) {
@@ -53,6 +54,7 @@ export default function LoanDetailScreen() {
 
   const [resolutionNo, setResolutionNo] = useState("");
   const [repayAmount, setRepayAmount] = useState("");
+  const [repayDate, setRepayDate] = useState(() => new Date().toISOString().split("T")[0]);
   const [showRepay, setShowRepay] = useState(false);
   const [dialog, setDialog] = useState<DialogType>(null);
   const [rejectReason, setRejectReason] = useState("");
@@ -60,6 +62,7 @@ export default function LoanDetailScreen() {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [resolutionError, setResolutionError] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const repaymentSubmittingRef = useRef(false);
 
   if (!loan) {
     return (
@@ -167,17 +170,19 @@ export default function LoanDetailScreen() {
 
   const handleRepay = async () => {
     try {
-      if (isSubmitting) return;
+      if (isSubmitting || repaymentSubmittingRef.current) return;
       const num = parseInt(repayAmount);
       if (!num || num <= 0) return;
+      repaymentSubmittingRef.current = true;
       setIsSubmitting(true);
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      await addRepayment(loan.id, { shgAmount: num, bankAmount: 0 });
+      await addRepayment(loan.id, { shgAmount: num, bankAmount: 0, date: repayDate });
       setRepayAmount("");
       setShowRepay(false);
     } catch (e: any) {
       Alert.alert(t("error"), e.message || t("error"));
     } finally {
+      repaymentSubmittingRef.current = false;
       setIsSubmitting(false);
     }
   };
@@ -394,16 +399,6 @@ export default function LoanDetailScreen() {
           </View>
         )}
 
-        
-        {!isPresident && !isTreasurer && loan.calculationMethod === "reducing_balance" && loan.remainingBalance > 0 && (
-          <Pressable 
-            style={[styles.approveBtn, { backgroundColor: Colors.light.primary, marginBottom: 16 }]} 
-            onPress={() => setShowQrModal(true)}
-          >
-            <Ionicons name="qr-code-outline" size={18} color="#fff" />
-            <Text style={styles.approveBtnText}>{t("qr_modal_title")}</Text>
-          </Pressable>
-        )}
 
         {(loan.status === "rejected" || loan.status === "treasurer_rejected") && (
           <View style={styles.rejectionBox}>
@@ -586,7 +581,10 @@ export default function LoanDetailScreen() {
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionTitle}>{t("repayment")}</Text>
               {isPresident && (loan.status === "approved" || loan.status === "completed") && (
-                <Pressable onPress={() => setShowRepay(!showRepay)}>
+                <Pressable onPress={() => {
+                  if (!showRepay) setRepayDate(new Date().toISOString().split("T")[0]);
+                  setShowRepay(!showRepay);
+                }}>
                   <Ionicons name={showRepay ? "close" : "add-circle"} size={24} color={Colors.light.primary} />
                 </Pressable>
               )}
@@ -605,9 +603,20 @@ export default function LoanDetailScreen() {
                     keyboardType="number-pad"
                     autoFocus
                   />
-                  <Pressable style={styles.repayBtn} onPress={handleRepay}>
-                    <Ionicons name="checkmark" size={20} color="#fff" />
+                  <Pressable
+                    style={[styles.repayBtn, isSubmitting && styles.repayBtnDisabled]}
+                    onPress={handleRepay}
+                    disabled={isSubmitting}
+                    accessibilityLabel={isSubmitting ? "Saving repayment" : "Save repayment"}
+                  >
+                    {isSubmitting
+                      ? <ActivityIndicator size="small" color="#fff" />
+                      : <Ionicons name="checkmark" size={20} color="#fff" />}
                   </Pressable>
+                </View>
+                <View style={styles.repaymentDateField}>
+                  <Text style={styles.repaymentDateLabel}>{t("date")}</Text>
+                  <SHGDatePicker mode="date" value={repayDate} onSelect={setRepayDate} />
                 </View>
                 {loan.calculationMethod === "reducing_balance" && repaymentPreview && previewRepayAmount > 0 && (
                   <View style={[styles.amountCard, { marginTop: 12, backgroundColor: Colors.light.card, borderColor: Colors.light.primary, borderWidth: 1 }]}>
@@ -1158,6 +1167,18 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.light.primary,
     borderRadius: 8,
     padding: 8,
+  },
+  repayBtnDisabled: {
+    opacity: 0.65,
+  },
+  repaymentDateField: {
+    marginTop: 10,
+  },
+  repaymentDateLabel: {
+    fontFamily: "Poppins_500Medium",
+    fontSize: 13,
+    color: Colors.light.textSecondary,
+    marginBottom: 6,
   },
   repaymentItem: {
     flexDirection: "row",

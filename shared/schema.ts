@@ -177,6 +177,7 @@ export const loans = pgTable("loans", {
   totalPrincipalPaid: integer("total_principal_paid").notNull().default(0),
   totalInterestPaid: integer("total_interest_paid").notNull().default(0),
   outstandingInterest: integer("outstanding_interest").notNull().default(0),
+  startDate: text("start_date"),  // Display-only loan start date; does not affect loan_ledger calculations
 }, (t) => ({
   loanMemberIdx: index("loan_member_idx").on(t.memberId),
 }));

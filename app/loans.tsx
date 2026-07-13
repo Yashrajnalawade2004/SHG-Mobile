@@ -148,12 +148,14 @@ export default function LoansScreen() {
           >
             <Ionicons name="filter" size={20} color={showFilters ? "#fff" : Colors.light.text} />
           </Pressable>
-          <Pressable
-            style={styles.addBtn}
-            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); router.push("/create-loan"); }}
-          >
-            <Ionicons name="add" size={22} color="#fff" />
-          </Pressable>
+          {(isPresident || isTreasurer) && (
+            <Pressable
+              style={styles.addBtn}
+              onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); router.push("/create-loan"); }}
+            >
+              <Ionicons name="add" size={22} color="#fff" />
+            </Pressable>
+          )}
         </View>
       </View>
 

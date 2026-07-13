@@ -340,7 +340,7 @@ export interface IStorage {
   getBankLoanRepaymentsByAllocationId(allocationId: string): Promise<BankLoanRepayment[]>;
   getNextBankLoanReceiptSequence(year: number): Promise<number>;
   recordBankLoanRepayment(
-    repayment: Omit<BankLoanRepayment, "id" | "date">,
+    repayment: Omit<BankLoanRepayment, "id">,
     ledgerEntry: Omit<BankLoanLedgerEntry, "id" | "createdAt">,
     snapshotUpdate: { outstandingBalance: number; outstandingInterest: number; totalPrincipalPaid: number; totalInterestPaid: number; status?: string }
   ): Promise<BankLoanRepayment>;
@@ -1150,7 +1150,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async recordBankLoanRepayment(
-    repayment: Omit<BankLoanRepayment, "id" | "date">,
+    repayment: Omit<BankLoanRepayment, "id">,
     ledgerEntry: Omit<BankLoanLedgerEntry, "id" | "createdAt">,
     snapshotUpdate: { outstandingBalance: number; outstandingInterest: number; totalPrincipalPaid: number; totalInterestPaid: number; status?: string }
   ): Promise<BankLoanRepayment> {

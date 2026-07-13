@@ -190,13 +190,16 @@ export default function ReportsScreen() {
 
     let loanLedger = [];
     let bankLoanLedger = [];
+    // Ledger endpoints are authorized against the user's UUID groupId. The
+    // group's display/group-code field is not a safe substitute here.
+    const ledgerGroupId = user?.groupId || group.id;
     
     try {
       if (["member_passbook", "cash_book", "bank_book", "financial", "internal_loans", "annual_report"].includes(type)) {
-        loanLedger = await apiGet(`/api/groups/${group.id}/loan-ledger`);
+        loanLedger = await apiGet(`/api/groups/${ledgerGroupId}/loan-ledger`);
       }
       if (["member_passbook", "cash_book", "bank_book", "financial", "bank_loans", "annual_report"].includes(type)) {
-        bankLoanLedger = await apiGet(`/api/groups/${group.id}/bank-loan-ledger`);
+        bankLoanLedger = await apiGet(`/api/groups/${ledgerGroupId}/bank-loan-ledger`);
       }
     } catch (e) {
       console.error("Failed to fetch ledgers", e);
@@ -218,7 +221,9 @@ export default function ReportsScreen() {
       language,
       t,
       appliedFiltersText: getAppliedFiltersText(type),
-      timeRange: timeRange === "custom" ? "custom" : "range",
+      // Preserve the selected period so report generators can group timestamped
+      // ledger entries by the selected month and year.
+      timeRange,
       startDate: calculatedStart,
       endDate: calculatedEnd,
       filterMonth,

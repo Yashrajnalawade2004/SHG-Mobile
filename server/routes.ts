@@ -811,9 +811,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { groupId } = req.params;
       if (req.currentUser!.groupId !== groupId)
         return res.status(403).json({ error: "Access denied" });
-      const { amount, duration } = req.body;
+
+      // ── Role guard: only president or treasurer may create loans ──────────
+      const caller = req.currentUser!;
+      if (caller.role !== "president" && caller.role !== "treasurer")
+        return res.status(403).json({ error: "Only the President or Treasurer can create loans" });
+
+      const { amount, duration, memberId, memberName, startDate } = req.body;
       if (!amount || !duration)
         return res.status(400).json({ error: "Amount and duration required" });
+
+      // ── Resolve the target member ─────────────────────────────────────────
+      // memberId in body = the member this loan is being created FOR.
+      let targetMemberId: string = caller.id;
+      let targetMemberName: string = caller.name;
+      if (memberId) {
+        const targetMember = await storage.getUserById(memberId);
+        if (!targetMember || targetMember.groupId !== groupId)
+          return res.status(400).json({ error: "Invalid member selected" });
+        targetMemberId = targetMember.id;
+        targetMemberName = memberName ?? targetMember.name;
+      }
 
       const settings = await storage.getGroupSettings(groupId);
 
@@ -833,8 +851,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (duration > rule.maxDuration)
         return res.status(400).json({ error: "durationTooLong" });
 
-
-      const user = req.currentUser!;
       const group = await storage.getGroupByGroupId(groupId);
       const initialStatus = group?.treasurerId
         ? "pending_treasurer"
@@ -849,12 +865,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const loan = await storage.createLoan({
         groupId,
-        memberId: user.id,
-        memberName: user.name,
+        memberId: targetMemberId,
+        memberName: targetMemberName,
         resolutionNo: "",
         amount: principal,
         interest: rate,
         duration: dur,
+        startDate: startDate ?? null,  // Display-only; does not affect loan_ledger
         status: initialStatus,
         createdAt: now(req),
         hasBankLoan: false,
@@ -1156,7 +1173,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     requirePresidentOrTreasurer as any,
     async (req: AuthRequest, res) => {
       const { loanId } = req.params;
-      const { amount, shgAmount, bankAmount, remarks } = req.body;
+      const { amount, shgAmount, bankAmount, date, remarks } = req.body;
       const loan = await storage.getLoanById(loanId);
       if (!loan || loan.groupId !== req.currentUser!.groupId) {
         return res.status(404).json({ error: "Loan not found" });
@@ -1174,6 +1191,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!loan.hasBankLoan && bank > 0)
         return res.status(400).json({ error: "This loan does not have a bank component" });
 
+      const repaymentDate = date ? new Date(date) : now(req);
+      if (Number.isNaN(repaymentDate.getTime())) {
+        return res.status(400).json({ error: "Valid repayment date required" });
+      }
+
       let repayment;
       // If this is a reducing balance loan, use atomic transaction and ledger
       if (loan.calculationMethod === "reducing_balance") {
@@ -1190,7 +1212,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             amount: shg + bank,
             shgAmount: shg,
             bankAmount: bank,
-            date: now(req).toISOString(),
+            date: repaymentDate.toISOString(),
             recordedBy: req.currentUser!.id,
             remarks: remarks?.trim() || undefined,
           },
@@ -1204,7 +1226,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           amount: shg + bank,
           shgAmount: shg,
           bankAmount: bank,
-          date: now(req),
+          date: repaymentDate,
           recordedBy: req.currentUser!.id,
           remarks: remarks?.trim() || undefined,
         });
@@ -1738,9 +1760,14 @@ Reply with ONLY a JSON object, no markdown, no explanation:
       const paymentAmt = Number(amount);
       if (!paymentAmt || paymentAmt <= 0) return res.status(400).json({ error: "Valid amount required" });
 
+      const repaymentDate = date ? new Date(date) : now(req);
+      if (Number.isNaN(repaymentDate.getTime())) {
+        return res.status(400).json({ error: "Valid repayment date required" });
+      }
+
 
       // Generate sequential receipt number
-      const year = new Date(date || Date.now()).getFullYear();
+      const year = repaymentDate.getFullYear();
       const seq = await storage.getNextBankLoanReceiptSequence(year);
       const receiptNo = generateBankLoanReceiptNo(year, seq);
 
@@ -1764,6 +1791,7 @@ Reply with ONLY a JSON object, no markdown, no explanation:
           allocationId,
           receiptNo,
           amount: paymentAmt,
+          date: repaymentDate,
           recordedBy: req.currentUser!.id,
           remarks: remarks || null,
         },
@@ -1771,7 +1799,7 @@ Reply with ONLY a JSON object, no markdown, no explanation:
           allocationId,
           receiptNo,
           type: "repayment",
-          date: date ? new Date(date) : now(req),
+          date: repaymentDate,
           openingPrincipal: ledgerResult.openingPrincipal,
           interestRateApplied: bankLoan.annualInterestRate,
           interestCharged: ledgerResult.interestCharged,

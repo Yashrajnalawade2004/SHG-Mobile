@@ -14,6 +14,7 @@ import { useData } from "@/contexts/DataContext";
 import { getBankLoanRecommendation } from "@/shared/bankLoanAccounting";
 import { generateBankLoanPassbookPDF } from "@/lib/pdf-generator";
 import Colors from "@/constants/colors";
+import SHGDatePicker from "@/components/SHGDatePicker";
 
 /** ─── Member Bank Loan Allocation Passbook Screen ─── */
 export default function BankLoanAllocationScreen() {
@@ -32,7 +33,8 @@ export default function BankLoanAllocationScreen() {
   const [showRepayModal, setShowRepayModal] = useState(false);
   const [showQrModal, setShowQrModal] = useState(false);
   const [repayAmount, setRepayAmount] = useState("");
-    const [repayRemarks, setRepayRemarks] = useState("");
+  const [repayDate, setRepayDate] = useState(() => new Date().toISOString().split("T")[0]);
+  const [repayRemarks, setRepayRemarks] = useState("");
   const [recording, setRecording] = useState(false);
   const [generatingPDF, setGeneratingPDF] = useState(false);
 
@@ -113,10 +115,12 @@ export default function BankLoanAllocationScreen() {
       if (Platform.OS !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       await recordBankLoanRepayment(allocation.id, {
         amount: amt,
+        date: repayDate,
         remarks: repayRemarks,
       });
       setShowRepayModal(false);
       setRepayAmount("");
+      setRepayDate(new Date().toISOString().split("T")[0]);
       setRepayRemarks("");
       await fetchLedger();
     } catch (e: any) {
@@ -358,6 +362,11 @@ export default function BankLoanAllocationScreen() {
                 value={repayAmount}
                 onChangeText={setRepayAmount}
               />
+            </View>
+
+            <View style={styles.formGroup}>
+              <Text style={styles.formLabel}>{t("date")} *</Text>
+              <SHGDatePicker mode="date" value={repayDate} onSelect={setRepayDate} />
             </View>
             
             <View style={styles.formGroup}>

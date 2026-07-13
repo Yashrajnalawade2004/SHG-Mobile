@@ -64,6 +64,7 @@ export interface Loan {
   amount: number;
   interest: number;
   duration: number;
+  startDate?: string;         // Display-only loan start date (does not affect loan_ledger)
   remainingBalance: number;
   calculationMethod?: "legacy" | "reducing_balance";
   fixedPrincipalInstallment?: number;
@@ -283,13 +284,22 @@ interface DataContextValue {
   requestLoan: (data: {
     amount: number;
     duration: number;
+    memberId?: string;     // Target member (President/Treasurer assigning to someone)
+    memberName?: string;  // Name of the target member
+    startDate?: string;   // Loan start date (display only, ISO date string)
+    hasBankLoan?: boolean;
+    bankId?: string;
+    bankLoanAmount?: number;
+    bankInterestRate?: number;
+    bankDuration?: number;
+    bankLoanRemarks?: string;
   }) => Promise<string | null>;
   treasurerApproveLoan: (id: string) => Promise<void>;
   treasurerRejectLoan: (id: string, reason?: string) => Promise<void>;
   approveLoan: (id: string, resolutionNo: string, meetingId?: string) => Promise<void>;
   rejectLoan: (id: string, reason?: string) => Promise<void>;
   deleteLoan: (id: string) => Promise<void>;
-  addRepayment: (loanId: string, data: { shgAmount: number; bankAmount: number; remarks?: string }) => Promise<void>;
+  addRepayment: (loanId: string, data: { shgAmount: number; bankAmount: number; date?: string; remarks?: string }) => Promise<void>;
   deleteRepayment: (repaymentId: string) => Promise<void>;
   assignTreasurer: (userId: string | null) => Promise<void>;
   updateGroupRules: (rules: string) => Promise<void>;
@@ -428,6 +438,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const requestLoan = useCallback(async (data: {
     amount: number;
     duration: number;
+    memberId?: string;
+    memberName?: string;
+    startDate?: string;
     hasBankLoan?: boolean;
     bankId?: string;
     bankLoanAmount?: number;
@@ -470,12 +483,13 @@ export function DataProvider({ children }: { children: ReactNode }) {
     await apiPatch(`/api/groups/${user.groupId}/treasurer`, { userId });
   }, [user?.groupId]);
 
-  const addRepayment = useCallback(async (loanId: string, data: { shgAmount: number; bankAmount: number; remarks?: string }) => {
+  const addRepayment = useCallback(async (loanId: string, data: { shgAmount: number; bankAmount: number; date?: string; remarks?: string }) => {
     const total = data.shgAmount + data.bankAmount;
     const response = await apiPost<{ success: boolean; loan: Loan; repayment: LoanRepayment }>(`/api/loans/${loanId}/repayments`, {
       amount: total,
       shgAmount: data.shgAmount,
       bankAmount: data.bankAmount,
+      date: data.date,
       remarks: data.remarks,
     });
     const repayment = response.repayment || (response as unknown as LoanRepayment);

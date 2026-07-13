@@ -2,7 +2,7 @@
 import * as Print from "expo-print";
 import * as Sharing from "expo-sharing";
 import { Platform, Alert } from "react-native";
-import { resolveRepaymentAmounts, calculateShgTotal, calculateShgEmi } from "../shared/accounting";
+import { resolveRepaymentAmounts, calculateShgTotal, calculateShgEmi, getCurrentLoanRecommendation } from "../shared/accounting";
 
 // ─── Utilities ────────────────────────────────────────────────────────────────
 
@@ -46,14 +46,7 @@ export function filterByDateRange(
   filterYear?: string
 ) {
   if (!items || items.length === 0) return items;
-  if (timeRange === "custom" && startDate && endDate) {
-    const start = new Date(startDate).getTime();
-    const end = new Date(endDate).getTime() + 24 * 60 * 60 * 1000 - 1;
-    return items.filter((i) => {
-      const d = new Date(i.date || i.paidAt || i.createdAt).getTime();
-      return d >= start && d <= end;
-    });
-  } else if (timeRange === "month" && filterMonth && filterYear) {
+  if (timeRange === "month" && filterMonth && filterYear) {
     const m = parseInt(filterMonth) - 1;
     const y = parseInt(filterYear);
     return items.filter((i) => {
@@ -65,6 +58,13 @@ export function filterByDateRange(
     return items.filter(
       (i) => new Date(i.date || i.paidAt || i.createdAt).getFullYear() === y
     );
+  } else if (startDate && endDate) {
+    const start = new Date(startDate).getTime();
+    const end = new Date(endDate).getTime() + 24 * 60 * 60 * 1000 - 1;
+    return items.filter((i) => {
+      const d = new Date(i.date || i.paidAt || i.createdAt).getTime();
+      return d >= start && d <= end;
+    });
   }
   return items;
 }
@@ -1514,7 +1514,12 @@ export async function generateCashBook({ group, groupMembers, payments, loans, l
   const pres = groupMembers.find((m: any) => m.role === "president")?.name || "—";
   const treas = groupMembers.find((m: any) => m.role === "treasurer")?.name || "—";
   const amount = (value: any) => Number(value || 0);
-  const displayAmount = (value: any) => amount(value).toLocaleString("en-IN");
+  // The register uses a blank cell where no financial value exists; this keeps
+  // missing activity distinct from an entered monetary amount.
+  const displayAmount = (value: any) => {
+    const numericValue = amount(value);
+    return numericValue === 0 ? "" : numericValue.toLocaleString("en-IN");
+  };
   const escapeHtml = (value: any) => String(value ?? "—").replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" }[char] as string));
   const recordDate = (item: any) => new Date(item.date || item.paidAt || item.createdAt);
   const reportEnd = endDate ? new Date(endDate) : new Date();
@@ -1550,6 +1555,25 @@ export async function generateCashBook({ group, groupMembers, payments, loans, l
   const bankLedgers = bankLoanLedger || [];
   const allocations = bankLoanAllocations || [];
   const activeMembers = (groupMembers || []).filter((member: any) => member.status !== "inactive" && member.status !== "removed");
+  // Older internal-ledger rows were created before the `type` column existed.
+  // A repayment always has a received amount, whereas a disbursement has zero.
+  // Keep this fallback so historic repayments appear in the monthly register.
+  const isRepaymentLedgerEntry = (entry: any) =>
+    entry.type === "repayment" || (entry.type == null && amount(entry.paymentReceived ?? entry.payment_received) > 0);
+  // Drizzle normally serializes these as camelCase, but reports must also support
+  // ledger data returned from database exports/raw queries (snake_case).
+  const internalLedgerLoanId = (entry: any) => entry.loanId ?? entry.loan_id;
+  const internalPrincipalPaid = (entry: any) => amount(entry.principalPaid ?? entry.principal_paid);
+  const internalInterestPaid = (entry: any) => amount(entry.interestPaid ?? entry.interest_paid);
+  const isInternalRepaymentInSelectedPeriod = (entry: any) => {
+    const repaymentDate = recordDate(entry);
+    if (Number.isNaN(repaymentDate.getTime())) return false;
+    if (timeRange === "month" && filterMonth && filterYear) {
+      return repaymentDate.getMonth() === Number(filterMonth) - 1
+        && repaymentDate.getFullYear() === Number(filterYear);
+    }
+    return isInPeriod(entry);
+  };
 
   const memberRows = activeMembers.map((member: any, index: number) => {
     const memberPayments = (payments || []).filter((payment: any) => payment.memberId === member.id && payment.status === "confirmed");
@@ -1557,16 +1581,22 @@ export async function generateCashBook({ group, groupMembers, payments, loans, l
     const memberLoanIds = new Set(memberLoans.map((loan: any) => loan.id));
     const memberAllocations = allocations.filter((allocation: any) => allocation.memberId === member.id);
     const memberAllocationIds = new Set(memberAllocations.map((allocation: any) => allocation.id));
-    const memberInternalLedger = internalLedgers.filter((entry: any) => memberLoanIds.has(entry.loanId));
+    const memberInternalLedger = internalLedgers.filter((entry: any) => memberLoanIds.has(internalLedgerLoanId(entry)));
     const memberBankLedger = bankLedgers.filter((entry: any) => memberAllocationIds.has(entry.allocationId));
 
     const monthlySavings = memberPayments.filter(isPaymentInPeriod).reduce((sum: number, payment: any) => sum + amount(payment.amount), 0);
     const lateFees = memberPayments.filter(isPaymentInPeriod).reduce((sum: number, payment: any) => sum + amount(payment.lateFee), 0);
-    const internalPrincipalRecovery = memberInternalLedger.filter((entry: any) => entry.type === "repayment" && isInPeriod(entry)).reduce((sum: number, entry: any) => sum + amount(entry.principalPaid), 0);
-    const internalInterestRecovery = memberInternalLedger.filter((entry: any) => entry.type === "repayment" && isInPeriod(entry)).reduce((sum: number, entry: any) => sum + amount(entry.interestPaid), 0);
+    const internalPrincipalRecovery = memberInternalLedger.filter((entry: any) => isRepaymentLedgerEntry(entry) && isInternalRepaymentInSelectedPeriod(entry)).reduce((sum: number, entry: any) => sum + internalPrincipalPaid(entry), 0);
+    const internalInterestRecovery = memberInternalLedger.filter((entry: any) => isRepaymentLedgerEntry(entry) && isInternalRepaymentInSelectedPeriod(entry)).reduce((sum: number, entry: any) => sum + internalInterestPaid(entry), 0);
     const bankPrincipalRecovery = memberBankLedger.filter((entry: any) => entry.type === "repayment" && isInPeriod(entry)).reduce((sum: number, entry: any) => sum + amount(entry.principalPaid), 0);
     const bankInterestRecovery = memberBankLedger.filter((entry: any) => entry.type === "repayment" && isInPeriod(entry)).reduce((sum: number, entry: any) => sum + amount(entry.interestPaid), 0);
-    const internalLoanGiven = memberInternalLedger.filter((entry: any) => entry.type === "disbursement" && isInPeriod(entry)).reduce((sum: number, entry: any) => sum + amount(entry.paymentReceived || entry.closingPrincipal), 0);
+    const loanDisbursementDate = (item: any) => new Date(item.startDate || item.approvedAt || item.createdAt);
+    const isLoanGivenInPeriod = (item: any) => {
+      const date = loanDisbursementDate(item).getTime();
+      return !Number.isNaN(date) && (!reportStart || date >= reportStart.getTime()) && date <= reportEnd.getTime();
+    };
+
+    const internalLoanGiven = memberLoans.filter(isLoanGivenInPeriod).reduce((sum: number, loan: any) => sum + amount(loan.amount), 0);
     const bankLoanGiven = memberBankLedger.filter((entry: any) => entry.type === "disbursement" && isInPeriod(entry)).reduce((sum: number, entry: any) => sum + amount(entry.paymentReceived || entry.closingPrincipal), 0);
 
     // Extra savings, fixed deposits, other contributions, and member refunds are
@@ -1580,13 +1610,16 @@ export async function generateCashBook({ group, groupMembers, payments, loans, l
     const totalDeposits = monthlySavings + additionalSavings + fixedDeposit + internalPrincipalRecovery + internalInterestRecovery + bankPrincipalRecovery + bankInterestRecovery + lateFees + otherContribution;
     const totalPayments = internalLoanGiven + bankLoanGiven + savingsAndProfitReturned + fixedDepositAndInterestReturned + additionalSavingsAndInterestReturned;
 
-    const internalClosing = memberLoans.reduce((sum: number, loan: any) => {
-      const latest = ledgerBeforeEnd(memberInternalLedger, (entry) => entry.loanId === loan.id);
-      if (latest) return sum + amount(latest.closingPrincipal) + amount(latest.outstandingInterest);
-      return isOnOrBeforeEnd(loan) ? sum + amount(loan.amount) : sum;
+    const internalExpectedAmount = memberLoans.reduce((sum: number, loan: any) => {
+      if (loan.calculationMethod === "reducing_balance") {
+        const rec = getCurrentLoanRecommendation(loan);
+        return sum + ((rec?.outstandingPrincipal || 0) + (rec?.outstandingInterest || 0) + (rec?.currentMonthInterest || 0));
+      } else {
+        return sum + amount(loan.remainingBalance);
+      }
     }, 0);
     const internalPrincipalOutstanding = memberLoans.reduce((sum: number, loan: any) => {
-      const latest = ledgerBeforeEnd(memberInternalLedger, (entry) => entry.loanId === loan.id);
+      const latest = ledgerBeforeEnd(memberInternalLedger, (entry) => internalLedgerLoanId(entry) === loan.id);
       if (latest) return sum + amount(latest.closingPrincipal);
       return isOnOrBeforeEnd(loan) ? sum + amount(loan.amount) : sum;
     }, 0);
@@ -1600,7 +1633,7 @@ export async function generateCashBook({ group, groupMembers, payments, loans, l
     }, 0);
     const closingSavings = memberPayments.filter(isPaymentOnOrBeforeEnd).reduce((sum: number, payment: any) => sum + amount(payment.amount), 0);
 
-    return { index: index + 1, member, monthlySavings, additionalSavings, fixedDeposit, internalPrincipalRecovery, internalInterestRecovery, bankPrincipalRecovery, bankInterestRecovery, lateFees, otherContribution, totalDeposits, internalLoanGiven, bankLoanGiven, savingsAndProfitReturned, fixedDepositAndInterestReturned, additionalSavingsAndInterestReturned, totalPayments, internalExpectedLoan: internalClosing, bankExpectedLoan: bankClosing, closingSavings, internalPrincipalOutstanding, bankPrincipalOutstanding };
+    return { index: index + 1, member, monthlySavings, additionalSavings, fixedDeposit, internalPrincipalRecovery, internalInterestRecovery, bankPrincipalRecovery, bankInterestRecovery, lateFees, otherContribution, totalDeposits, internalLoanGiven, bankLoanGiven, savingsAndProfitReturned, fixedDepositAndInterestReturned, additionalSavingsAndInterestReturned, totalPayments, internalExpectedLoan: internalExpectedAmount, bankExpectedLoan: bankClosing, closingSavings, internalPrincipalOutstanding, bankPrincipalOutstanding };
   });
   const columns = ["monthlySavings", "additionalSavings", "fixedDeposit", "internalPrincipalRecovery", "internalInterestRecovery", "bankPrincipalRecovery", "bankInterestRecovery", "lateFees", "otherContribution", "totalDeposits", "internalLoanGiven", "bankLoanGiven", "savingsAndProfitReturned", "fixedDepositAndInterestReturned", "additionalSavingsAndInterestReturned", "totalPayments", "internalExpectedLoan", "bankExpectedLoan", "closingSavings", "internalPrincipalOutstanding", "bankPrincipalOutstanding"];
   const totals = columns.reduce((result: any, column) => ({ ...result, [column]: memberRows.reduce((sum: number, row: any) => sum + row[column], 0) }), {});
